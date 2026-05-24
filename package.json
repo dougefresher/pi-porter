@@ -21,15 +21,15 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "check": "bun run typecheck && bun run lint",
+    "check:silent-swallows": "bun run scripts/silent-swallow-metrics.ts --check",
+    "check": "bun run typecheck && bun run lint && bun run check:silent-swallows",
     "db:migrate": "bun run runtime/src/db/migrate.ts"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.75.5",
     "@earendil-works/pi-ai": "0.75.5",
     "@earendil-works/pi-coding-agent": "0.75.5",
-    "grammy": "1.38.0",
-    "postgres": "3.4.7"
+    "grammy": "1.38.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",

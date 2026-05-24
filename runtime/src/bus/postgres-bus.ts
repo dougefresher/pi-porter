@@ -3,10 +3,6 @@ import type { InboundEvent, NewInboundEvent, NewOutboundDelivery, OutboundDelive
 
 type JsonObject = Record<string, unknown>;
 
-function toJson(value: JsonObject | unknown[]): never {
-  return value as never;
-}
-
 function mapInbound(row: Record<string, unknown>): InboundEvent {
   return {
     id: Number(row.id),
@@ -53,7 +49,7 @@ export class PostgresBus {
   }
 
   async publishInbound(event: NewInboundEvent): Promise<number> {
-    const rows = await this.db<{ id: number }[]>`
+    const rows = (await this.db`
       insert into inbound_events (
         session_key,
         channel,
@@ -70,19 +66,19 @@ export class PostgresBus {
         ${event.chatId},
         ${event.senderId},
         ${event.content},
-        ${this.db.json(toJson(event.attachments ?? []))},
-        ${this.db.json(toJson(event.metadata ?? {}))}
+        ${event.attachments ?? []},
+        ${event.metadata ?? {}}
       )
       returning id
-    `;
+    `) as { id: number }[];
     const row = rows[0];
     if (!row) throw new Error('failed to publish inbound event');
-    await this.db.notify('suka_inbound', String(row.id));
+    await this.db`select pg_notify('suka_inbound', ${String(row.id)})`;
     return row.id;
   }
 
   async claimInbound(): Promise<InboundEvent | null> {
-    const rows = await this.db<Record<string, unknown>[]>`
+    const rows = (await this.db`
       update inbound_events
       set status = 'processing', processed_at = now()
       where id = (
@@ -93,7 +89,7 @@ export class PostgresBus {
         limit 1
       )
       returning *
-    `;
+    `) as Record<string, unknown>[];
     const row = rows[0];
     return row ? mapInbound(row) : null;
   }
@@ -111,7 +107,7 @@ export class PostgresBus {
   }
 
   async publishOutbound(delivery: NewOutboundDelivery): Promise<number> {
-    const rows = await this.db<{ id: number }[]>`
+    const rows = (await this.db`
       insert into outbound_deliveries (
         inbound_id,
         session_key,
@@ -130,19 +126,19 @@ export class PostgresBus {
         ${delivery.chatId},
         ${delivery.type ?? 'message'},
         ${delivery.content ?? null},
-        ${this.db.json(toJson(delivery.media ?? {}))},
-        ${this.db.json(toJson(delivery.metadata ?? {}))}
+        ${delivery.media ?? {}},
+        ${delivery.metadata ?? {}}
       )
       returning id
-    `;
+    `) as { id: number }[];
     const row = rows[0];
     if (!row) throw new Error('failed to publish outbound delivery');
-    await this.db.notify('suka_outbound', String(row.id));
+    await this.db`select pg_notify('suka_outbound', ${String(row.id)})`;
     return row.id;
   }
 
   async claimOutbound(): Promise<OutboundDelivery | null> {
-    const rows = await this.db<Record<string, unknown>[]>`
+    const rows = (await this.db`
       update outbound_deliveries
       set status = 'processing', attempts = attempts + 1
       where id = (
@@ -153,7 +149,7 @@ export class PostgresBus {
         limit 1
       )
       returning *
-    `;
+    `) as Record<string, unknown>[];
     const row = rows[0];
     return row ? mapOutbound(row) : null;
   }

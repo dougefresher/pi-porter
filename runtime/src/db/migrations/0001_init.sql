@@ -79,3 +79,15 @@ create table if not exists transcript_rows (
 
 create index if not exists transcript_rows_session_idx on transcript_rows (session_key, id);
 create index if not exists transcript_rows_payload_gin_idx on transcript_rows using gin (payload);
+
+create table if not exists session_archives (
+  id bigserial primary key,
+  session_key text not null references sessions(session_key),
+  reason text not null,
+  pi_session_id text,
+  line_count integer not null,
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists session_archives_session_idx on session_archives (session_key, id);

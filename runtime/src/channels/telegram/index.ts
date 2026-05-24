@@ -1,5 +1,6 @@
 import type { PostgresBus } from '../../bus/postgres-bus.js';
 import type { OutboundDelivery } from '../../bus/types.js';
+import { SessionArchiveStore } from '../../db/session-archive-store.js';
 import { SessionStore } from '../../db/session-store.js';
 import { parseSessionKey } from '../../routing/session-key.js';
 import type { ChannelRuntime } from '../types.js';
@@ -11,6 +12,8 @@ import { TelegramChannel } from './telegram.js';
 export type TelegramRuntimeOptions = {
   bus: PostgresBus;
   sessionStore: SessionStore;
+  sessionArchiveStore: SessionArchiveStore;
+  sessionRoot: string;
   botToken: string;
   pollingTimeoutSeconds: number;
   allowedSenders: string[];
@@ -21,12 +24,16 @@ export class TelegramRuntime implements ChannelRuntime {
   private access: TelegramAccessControl;
   private bus: PostgresBus;
   private sessionStore: SessionStore;
+  private sessionArchiveStore: SessionArchiveStore;
+  private sessionRoot: string;
   private channel: TelegramChannel;
 
   constructor(options: TelegramRuntimeOptions) {
     this.access = new TelegramAccessControl(options.allowedSenders);
     this.bus = options.bus;
     this.sessionStore = options.sessionStore;
+    this.sessionArchiveStore = options.sessionArchiveStore;
+    this.sessionRoot = options.sessionRoot;
     this.channel = new TelegramChannel({
       botToken: options.botToken,
       pollingTimeoutSeconds: options.pollingTimeoutSeconds,
@@ -54,6 +61,8 @@ export class TelegramRuntime implements ChannelRuntime {
 
         const handled = await handleTelegramCommand({
           bus: this.bus,
+          sessionArchiveStore: this.sessionArchiveStore,
+          sessionRoot: this.sessionRoot,
           sessionKey,
           senderId: message.senderId ?? parsed.peerId,
           chatJid: message.chatJid,

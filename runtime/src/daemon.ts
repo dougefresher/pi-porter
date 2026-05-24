@@ -3,8 +3,9 @@ import { PostgresBus } from './bus/postgres-bus.js';
 import { ChannelManager } from './channels/manager.js';
 import { TelegramRuntime } from './channels/telegram/index.js';
 import { ensureRuntimeDirs, type SukaConfig } from './config.js';
-import { closeDb, createDb, type Db } from './db/client.js';
+import { closeDb, type Db, getDb } from './db/client.js';
 import { migrate } from './db/migrate.js';
+import { SessionArchiveStore } from './db/session-archive-store.js';
 import { SessionStore } from './db/session-store.js';
 import { TranscriptStore } from './db/transcript-store.js';
 import { InboundWorker } from './workers/inbound-worker.js';
@@ -24,12 +25,13 @@ export class SukaDaemon {
   async start(): Promise<void> {
     await ensureRuntimeDirs(this.config);
 
-    const db = createDb(this.config.databaseUrl);
+    const db = getDb();
     this.db = db;
     await migrate(db);
 
     const bus = new PostgresBus(db);
     const sessions = new SessionStore(db);
+    const sessionArchives = new SessionArchiveStore(db);
     const transcripts = new TranscriptStore(db);
     const channels = new ChannelManager();
     this.channels = channels;
@@ -41,6 +43,8 @@ export class SukaDaemon {
         new TelegramRuntime({
           bus,
           sessionStore: sessions,
+          sessionArchiveStore: sessionArchives,
+          sessionRoot: `${this.config.stateDir}/pi-sessions`,
           botToken: this.config.telegram.botToken,
           pollingTimeoutSeconds: this.config.telegram.pollingTimeoutSeconds,
           allowedSenders: this.config.telegram.allowedSenders,

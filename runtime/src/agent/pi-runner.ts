@@ -1,11 +1,9 @@
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent';
 import type { SukaConfig } from '../config.js';
 import type { AgentRunInput, AgentRunner } from './runner.js';
-
-function safeSessionDirName(sessionKey: string): string {
-  return sessionKey.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 180);
-}
+import { currentSessionFileForKey, sessionDirForKey } from './session-paths.js';
 
 function collectTextDelta(event: unknown): string {
   const e = event as { type?: string; assistantMessageEvent?: { type?: string; delta?: unknown } };
@@ -39,10 +37,13 @@ export class PiAgentRunner implements AgentRunner {
   }
 
   async run(input: AgentRunInput): Promise<string> {
-    const sessionDir = join(this.sessionRoot, safeSessionDirName(input.sessionKey));
+    const sessionDir = sessionDirForKey(this.sessionRoot, input.sessionKey);
+    await mkdir(sessionDir, { recursive: true });
+    const sessionFile = currentSessionFileForKey(this.sessionRoot, input.sessionKey);
+
     const { session, modelFallbackMessage } = await createAgentSession({
       cwd: this.cwd,
-      sessionManager: SessionManager.continueRecent(this.cwd, sessionDir),
+      sessionManager: SessionManager.open(sessionFile, sessionDir, this.cwd),
       sessionStartEvent: {
         type: 'session_start',
         reason: 'resume',
