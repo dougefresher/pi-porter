@@ -1,8 +1,8 @@
-# Suka
+# Porter
 
 ## Project Intent
 
-`suka` is a native, always-on, Pi-powered personal assistant daemon for one operator.
+`porter` is a native, always-on, Pi-powered personal assistant daemon for one operator.
 
 Prefer simple, explicit architecture over generic platform machinery.
 
@@ -49,7 +49,7 @@ Prefer simple, explicit architecture over generic platform machinery.
 - Pi integration: reuse Pi provider/session/extension design where practical.
 - The daemon process working directory is the agent workspace. Prefer systemd `WorkingDirectory=` over app-specific workspace config.
 - Security: private VPN/systemd containment is assumed initially; do not overbuild product auth yet.
-- Telegram must enforce an explicit sender allowlist before messages enter the durable bus. Use `SUKA_TELEGRAM_ALLOWED_SENDERS`.
+- Telegram must enforce an explicit sender allowlist before messages enter the durable bus. Use `PORTER_TELEGRAM_ALLOWED_SENDERS`.
 
 ## Validation
 
@@ -71,8 +71,8 @@ bun run check:silent-swallows
 
 CI is Buildkite not GitHub Actions.
 
-- Pipeline slug: `pi-suka`
-- Repo: `dougefresher/pi-suka`
+- Pipeline slug: `pi-porter`
+- Repo: `dougefresher/pi-porter`
 - Default branch: `main`
 - Triggers: branch pushes and pull requests (GitHub App provider)
 

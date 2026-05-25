@@ -1,8 +1,8 @@
-# suka
+# porter
 
-`suka` is a native, always-on, Pi-powered personal assistant daemon.
+`porter` is a native, always-on, Pi-powered personal assistant daemon.
 
-Let Pi be Pi; `suka` should just give Pi a phone.
+Let Pi be Pi; `porter` should just give Pi a phone.
 
 Initial direction:
 

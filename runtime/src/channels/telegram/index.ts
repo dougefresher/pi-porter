@@ -37,7 +37,7 @@ export class TelegramRuntime implements ChannelRuntime {
     this.channel = new TelegramChannel({
       botToken: options.botToken,
       pollingTimeoutSeconds: options.pollingTimeoutSeconds,
-      assistantName: 'suka',
+      assistantName: 'porter',
       onMessage: async (message) => {
         if (message.isFromMe) return;
 

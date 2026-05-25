@@ -350,9 +350,9 @@ function parseEnvRoots(key: string, fallback: string[]): string[] {
 export async function getSilentSwallowMetrics(
   options: { repoDirs?: string[]; runtimeCoreDirs?: string[] } = {},
 ): Promise<SilentSwallowMetrics> {
-  const repoDirs = options.repoDirs ?? parseEnvRoots('SUKA_SILENT_SWALLOW_SCAN_ROOTS', DEFAULT_REPO_DIRS);
+  const repoDirs = options.repoDirs ?? parseEnvRoots('PORTER_SILENT_SWALLOW_SCAN_ROOTS', DEFAULT_REPO_DIRS);
   const runtimeCoreDirs =
-    options.runtimeCoreDirs ?? parseEnvRoots('SUKA_SILENT_SWALLOW_RUNTIME_CORE_ROOTS', DEFAULT_RUNTIME_CORE_DIRS);
+    options.runtimeCoreDirs ?? parseEnvRoots('PORTER_SILENT_SWALLOW_RUNTIME_CORE_ROOTS', DEFAULT_RUNTIME_CORE_DIRS);
 
   const repoFiles = await collectFiles(repoDirs);
   const runtimeCoreFiles = await collectFiles(runtimeCoreDirs);
@@ -398,8 +398,8 @@ export function buildSilentSwallowRemediationHint(): string {
 
 if (import.meta.main) {
   const checkMode = process.argv.includes('--check');
-  const repoDirs = parseEnvRoots('SUKA_SILENT_SWALLOW_SCAN_ROOTS', DEFAULT_REPO_DIRS);
-  const runtimeCoreDirs = parseEnvRoots('SUKA_SILENT_SWALLOW_RUNTIME_CORE_ROOTS', DEFAULT_RUNTIME_CORE_DIRS);
+  const repoDirs = parseEnvRoots('PORTER_SILENT_SWALLOW_SCAN_ROOTS', DEFAULT_REPO_DIRS);
+  const runtimeCoreDirs = parseEnvRoots('PORTER_SILENT_SWALLOW_RUNTIME_CORE_ROOTS', DEFAULT_RUNTIME_CORE_DIRS);
   const metrics = await getSilentSwallowMetrics({ repoDirs, runtimeCoreDirs });
   printSilentSwallowMetrics(metrics);
 

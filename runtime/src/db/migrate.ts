@@ -8,7 +8,7 @@ const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), 'migrations'
 export async function migrate(db: Db): Promise<void> {
   await db`create table if not exists schema_migrations (version text primary key, applied_at timestamptz not null default now())`;
 
-  await db`select pg_advisory_lock(hashtext('suka:migrations')::bigint)`;
+  await db`select pg_advisory_lock(hashtext('porter:migrations')::bigint)`;
   try {
     const files = (await Array.fromAsync(new Bun.Glob('*.sql').scan({ cwd: migrationsDir }))).sort();
     for (const file of files) {
@@ -25,7 +25,7 @@ export async function migrate(db: Db): Promise<void> {
       console.log(`[db] applied migration ${file}`);
     }
   } finally {
-    await db`select pg_advisory_unlock(hashtext('suka:migrations')::bigint)`;
+    await db`select pg_advisory_unlock(hashtext('porter:migrations')::bigint)`;
   }
 }
 

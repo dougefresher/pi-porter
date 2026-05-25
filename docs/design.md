@@ -1,9 +1,9 @@
-# suka design sketch
+# porter design sketch
 
 ## Goals
 
 - Always-on personal assistant daemon, closer to `tmux`/`screen` than a SaaS app.
-- Let Pi be Pi; `suka` should just give Pi a phone.
+- Let Pi be Pi; `porter` should just give Pi a phone.
 - Mobile-first interaction through Telegram.
 - Web UI/control panel where richer surfaces help.
 - Scheduler and Dream-style memory maintenance as first-class runtime features.
@@ -26,7 +26,7 @@ Telegram/Web/Scheduler -> inbound_events -> InboundWorker -> Pi AgentSession -> 
 
 The daemon process working directory is the agent workspace. Under systemd, use `WorkingDirectory=`. Do not invent a second workspace layer on top of pi-coding-agent.
 
-Pi owns provider/model/tool/settings resolution through normal global and project-local settings. `suka` does not set `SUKA_AGENT_MODEL` or maintain a parallel model config.
+Pi owns provider/model/tool/settings resolution through normal global and project-local settings. `porter` does not set `PORTER_AGENT_MODEL` or maintain a parallel model config.
 
 Replies route deterministically back to the channel/conversation that caused the run unless a scheduled job explicitly configures a different reporting channel.
 

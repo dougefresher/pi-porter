@@ -73,7 +73,7 @@ export class PostgresBus {
     `) as { id: number }[];
     const row = rows[0];
     if (!row) throw new Error('failed to publish inbound event');
-    await this.db`select pg_notify('suka_inbound', ${String(row.id)})`;
+    await this.db`select pg_notify('porter_inbound', ${String(row.id)})`;
     return row.id;
   }
 
@@ -133,7 +133,7 @@ export class PostgresBus {
     `) as { id: number }[];
     const row = rows[0];
     if (!row) throw new Error('failed to publish outbound delivery');
-    await this.db`select pg_notify('suka_outbound', ${String(row.id)})`;
+    await this.db`select pg_notify('porter_outbound', ${String(row.id)})`;
     return row.id;
   }
 
