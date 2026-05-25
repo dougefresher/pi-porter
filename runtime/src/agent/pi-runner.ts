@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent';
-import type { SukaConfig } from '../config.js';
+import type { PorterConfig } from '../config.js';
 import type { AgentRunInput, AgentRunner } from './runner.js';
 import { currentSessionFileForKey, sessionDirForKey } from './session-paths.js';
 
@@ -30,7 +30,7 @@ export class PiAgentRunner implements AgentRunner {
   private promptTimeoutMs: number;
   private sessionRoot: string;
 
-  constructor(config: SukaConfig) {
+  constructor(config: PorterConfig) {
     this.cwd = process.cwd();
     this.promptTimeoutMs = config.agentPromptTimeoutMs;
     this.sessionRoot = join(config.stateDir, 'pi-sessions');

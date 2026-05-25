@@ -2,7 +2,7 @@ import { PiAgentRunner } from './agent/pi-runner.js';
 import { PostgresBus } from './bus/postgres-bus.js';
 import { ChannelManager } from './channels/manager.js';
 import { TelegramRuntime } from './channels/telegram/index.js';
-import { ensureRuntimeDirs, type SukaConfig } from './config.js';
+import { ensureRuntimeDirs, type PorterConfig } from './config.js';
 import { closeDb, type Db, getDb } from './db/client.js';
 import { migrate } from './db/migrate.js';
 import { SessionArchiveStore } from './db/session-archive-store.js';
@@ -11,14 +11,14 @@ import { TranscriptStore } from './db/transcript-store.js';
 import { InboundWorker } from './workers/inbound-worker.js';
 import { OutboundWorker } from './workers/outbound-worker.js';
 
-export class SukaDaemon {
+export class PorterDaemon {
   private channels: ChannelManager | null = null;
-  private config: SukaConfig;
+  private config: PorterConfig;
   private db: Db | null = null;
   private inboundWorker: InboundWorker | null = null;
   private outboundWorker: OutboundWorker | null = null;
 
-  constructor(config: SukaConfig) {
+  constructor(config: PorterConfig) {
     this.config = config;
   }
 
@@ -38,7 +38,7 @@ export class SukaDaemon {
 
     if (this.config.telegram.enabled) {
       if (!this.config.telegram.botToken)
-        throw new Error('SUKA_TELEGRAM_BOT_TOKEN is required when Telegram is enabled.');
+        throw new Error('PORTER_TELEGRAM_BOT_TOKEN is required when Telegram is enabled.');
       channels.register(
         new TelegramRuntime({
           bus,
@@ -59,7 +59,7 @@ export class SukaDaemon {
     this.outboundWorker.start();
     this.inboundWorker.start();
 
-    console.log('[suka] daemon started');
+    console.log('[porter] daemon started');
   }
 
   async stop(): Promise<void> {
@@ -76,6 +76,6 @@ export class SukaDaemon {
       await closeDb(this.db);
       this.db = null;
     }
-    console.log('[suka] daemon stopped');
+    console.log('[porter] daemon stopped');
   }
 }

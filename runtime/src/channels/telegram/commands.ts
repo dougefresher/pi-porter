@@ -111,7 +111,7 @@ export async function handleTelegramCommand(ctx: TelegramCommandContext): Promis
       accountId: parseSessionKey(ctx.sessionKey)?.accountId ?? 'default',
       chatId: ctx.chatJid,
       content: [
-        'suka: Pi with a phone.',
+        'porter: Pi with a phone.',
         '',
         'Commands:',
         '/whoami - show Telegram sender/chat/session IDs',
@@ -132,7 +132,7 @@ export async function handleTelegramCommand(ctx: TelegramCommandContext): Promis
       channel: 'telegram',
       accountId: parseSessionKey(ctx.sessionKey)?.accountId ?? 'default',
       chatId: ctx.chatJid,
-      content: ['suka online', `cwd: ${process.cwd()}`, `session_key: ${ctx.sessionKey}`].join('\n'),
+      content: ['porter online', `cwd: ${process.cwd()}`, `session_key: ${ctx.sessionKey}`].join('\n'),
       metadata: { command: name },
     });
     return true;

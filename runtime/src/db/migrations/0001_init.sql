@@ -3,7 +3,7 @@ create extension if not exists pg_trgm;
 create extension if not exists btree_gin;
 
 -- pgvector is expected for semantic memory. Keep this migration explicit so
--- `suka doctor` can eventually report a useful error on systems missing it.
+-- `porter doctor` can eventually report a useful error on systems missing it.
 create extension if not exists vector;
 
 create table if not exists schema_migrations (

@@ -1,12 +1,12 @@
 {
-  "name": "suka",
+  "name": "porter",
   "version": "0.1.0",
   "description": "Native Pi-powered personal assistant daemon with Telegram, web, scheduler, and Postgres memory.",
   "type": "module",
   "license": "MIT",
   "main": "runtime/src/index.ts",
   "bin": {
-    "suka": "runtime/src/index.ts"
+    "porter": "runtime/src/index.ts"
   },
   "files": [
     "runtime/src",
