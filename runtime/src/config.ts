@@ -59,4 +59,5 @@ export function loadConfig(): PorterConfig {
 export async function ensureRuntimeDirs(config: PorterConfig): Promise<void> {
   await mkdir(config.stateDir, { recursive: true });
   await mkdir(config.configDir, { recursive: true });
+  await mkdir(`${config.stateDir}/cron`, { recursive: true });
 }

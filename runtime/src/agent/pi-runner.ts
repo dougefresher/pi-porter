@@ -41,9 +41,10 @@ export class PiAgentRunner implements AgentRunner {
     await mkdir(sessionDir, { recursive: true });
     const sessionFile = currentSessionFileForKey(this.sessionRoot, input.sessionKey);
 
+    const cwd = input.cwd ?? this.cwd;
     const { session, modelFallbackMessage } = await createAgentSession({
-      cwd: this.cwd,
-      sessionManager: SessionManager.open(sessionFile, sessionDir, this.cwd),
+      cwd,
+      sessionManager: SessionManager.open(sessionFile, sessionDir, cwd),
       sessionStartEvent: {
         type: 'session_start',
         reason: 'resume',

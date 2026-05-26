@@ -3,6 +3,7 @@ export type AgentRunInput = {
   inboundId: number;
   text: string;
   metadata: Record<string, unknown>;
+  cwd?: string;
 };
 
 export type AgentRunner = {
