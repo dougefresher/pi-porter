@@ -1,10 +1,23 @@
 {
-  "name": "porter",
-  "version": "0.1.0",
+  "name": "pi-porter",
+  "version": "0.0.1",
   "description": "Native Pi-powered personal assistant daemon with Telegram, web, scheduler, and Postgres memory.",
   "type": "module",
   "license": "MIT",
   "main": "runtime/src/index.ts",
+  "keywords": [
+    "pi",
+    "ai",
+    "assistant"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dougefresher/pi-porter"
+  },
+  "bugs": {
+    "url": "https://github.com/dougefresher/pi-porter/issues"
+  },
+  "homepage": "https://github.com/dougefresher/pi-porter#readme",
   "bin": {
     "porter": "runtime/src/index.ts"
   },
