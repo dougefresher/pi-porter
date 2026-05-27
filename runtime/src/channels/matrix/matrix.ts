@@ -65,6 +65,13 @@ function isDirectRoom(room: Room): boolean {
   return room.getJoinedMemberCount() === 2;
 }
 
+const DEFAULT_MATRIX_SYNC_TIMEOUT_MS = 120_000;
+
+function matrixSyncTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.PORTER_MATRIX_SYNC_TIMEOUT_MS ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MATRIX_SYNC_TIMEOUT_MS;
+}
+
 export class MatrixChannel {
   private client: MatrixClient | null = null;
   private connected = false;
@@ -120,10 +127,19 @@ export class MatrixChannel {
       });
     }
 
+    const syncTimeoutMs = matrixSyncTimeoutMs();
     await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(syncTimeout);
+        client.removeListener(ClientEvent.Sync, onSync);
+        fn();
+      };
+
       const onSync = (state: SyncState, _prevState: SyncState | null, data?: { error?: Error }) => {
         if (state === SyncState.Prepared) {
-          client.removeListener(ClientEvent.Sync, onSync);
           client.on(RoomEvent.Timeline, (event, room, toStartOfTimeline, removed, data) => {
             if (toStartOfTimeline || removed || !room || !data?.liveEvent) return;
             this.handleTimelineEvent(event, room).catch((error) => {
@@ -140,21 +156,32 @@ export class MatrixChannel {
             userId: this.userId,
           });
           if (this.userId) this.opts.onConnected?.(this.userId);
-          resolve();
+          finish(() => resolve());
         }
         if (state === SyncState.Error) {
-          client.removeListener(ClientEvent.Sync, onSync);
           logError('sync failed during startup', {
             operation: 'matrix.sync.error',
             err: data?.error ?? null,
           });
-          reject(data?.error ?? new Error('Matrix sync failed during startup'));
+          finish(() => reject(data?.error ?? new Error('Matrix sync failed during startup')));
         }
       };
+
+      const syncTimeout = setTimeout(() => {
+        try {
+          client.stopClient();
+        } catch (error) {
+          logWarn('ignoring stopClient error after sync timeout', {
+            operation: 'matrix.sync.timeout',
+            err: error,
+          });
+        }
+        finish(() => reject(new Error(`Matrix sync did not become ready within ${syncTimeoutMs}ms`)));
+      }, syncTimeoutMs);
+
       client.on(ClientEvent.Sync, onSync);
       client.startClient({ initialSyncLimit: 20 }).catch((error) => {
-        client.removeListener(ClientEvent.Sync, onSync);
-        reject(error);
+        finish(() => reject(error));
       });
     });
   }
@@ -188,6 +215,9 @@ export class MatrixChannel {
     if (!this.connected || !this.client) throw new Error('Matrix channel is not connected.');
 
     const target = parseMatrixTarget(chatId);
+    if (!target.roomId.trim()) {
+      throw new Error(`invalid Matrix chat id: ${chatId}`);
+    }
     const messageText = `${this.opts.assistantName}: ${text}`;
 
     try {

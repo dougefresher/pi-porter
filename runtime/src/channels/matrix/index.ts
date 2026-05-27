@@ -86,11 +86,7 @@ export class MatrixRuntime implements ChannelRuntime {
         });
         if (handled) return;
 
-        if (message.eventId && (await this.bus.hasInboundMatrixEvent(message.eventId))) {
-          return;
-        }
-
-        await this.bus.publishInbound({
+        const inboundId = await this.bus.publishMatrixInbound({
           sessionKey,
           channel: 'matrix',
           accountId: parsed.accountId,
@@ -105,6 +101,7 @@ export class MatrixRuntime implements ChannelRuntime {
             isDirect: message.isDirect,
           },
         });
+        if (inboundId == null) return;
       },
     });
   }

@@ -106,16 +106,47 @@ export class PostgresBus {
     `;
   }
 
-  async hasInboundMatrixEvent(eventId: string): Promise<boolean> {
-    const trimmed = eventId.trim();
-    if (!trimmed) return false;
+  /**
+   * Publish a Matrix inbound event. When metadata.eventId is set, relies on a
+   * partial unique index for atomic dedupe (returns null if duplicate).
+   */
+  async publishMatrixInbound(event: NewInboundEvent): Promise<number | null> {
+    const eventId = typeof event.metadata?.eventId === 'string' ? event.metadata.eventId.trim() : '';
+    if (!eventId) {
+      return await this.publishInbound(event);
+    }
+
     const rows = (await this.db`
-      select 1 from inbound_events
-      where channel = 'matrix'
-        and metadata->>'eventId' = ${trimmed}
-      limit 1
-    `) as unknown[];
-    return rows.length > 0;
+      insert into inbound_events (
+        session_key,
+        channel,
+        account_id,
+        chat_id,
+        sender_id,
+        content,
+        attachments,
+        metadata
+      ) values (
+        ${event.sessionKey},
+        ${event.channel},
+        ${event.accountId},
+        ${event.chatId},
+        ${event.senderId},
+        ${event.content},
+        ${event.attachments ?? []},
+        ${event.metadata ?? {}}
+      )
+      on conflict ((metadata->>'eventId'))
+        where channel = 'matrix' and coalesce(metadata->>'eventId', '') <> ''
+      do nothing
+      returning id
+    `) as { id: number }[];
+
+    const row = rows[0];
+    if (!row) return null;
+
+    await this.db`select pg_notify('porter_inbound', ${String(row.id)})`;
+    return row.id;
   }
 
   async publishOutbound(delivery: NewOutboundDelivery): Promise<number> {

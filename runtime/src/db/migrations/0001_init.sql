@@ -45,6 +45,11 @@ create index if not exists inbound_events_pending_idx on inbound_events (created
 create index if not exists inbound_events_session_idx on inbound_events (session_key, id);
 create index if not exists inbound_events_metadata_gin_idx on inbound_events using gin (metadata);
 
+create unique index if not exists inbound_events_matrix_event_id_uidx
+  on inbound_events ((metadata->>'eventId'))
+  where channel = 'matrix'
+    and coalesce(metadata->>'eventId', '') <> '';
+
 create table if not exists outbound_deliveries (
   id bigserial primary key,
   inbound_id bigint references inbound_events(id) on delete set null,

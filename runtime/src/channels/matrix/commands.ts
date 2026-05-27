@@ -117,7 +117,7 @@ export async function handleMatrixCommand(ctx: MatrixCommandContext): Promise<bo
       channel: 'matrix',
       accountId: parsed?.accountId ?? 'default',
       chatId: ctx.chatId,
-      content: ['porter online', `cwd: ${process.cwd()}`, `session_key: ${ctx.sessionKey}`].join('\n'),
+      content: ['porter online', `session_key: ${ctx.sessionKey}`].join('\n'),
       metadata: { command: name },
     });
     return true;

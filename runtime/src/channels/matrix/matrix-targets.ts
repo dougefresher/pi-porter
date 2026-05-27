@@ -38,17 +38,29 @@ export function decodeMatrixPeerId(encoded: string): string {
 
 export function parseMatrixTarget(to: string): MatrixTarget {
   const normalized = stripKnownPrefixes(to, [MATRIX_PREFIX, ROOM_PREFIX]);
+  if (!normalized) {
+    throw new Error('invalid Matrix target: missing room id');
+  }
+
   const threadMatch = /^(.+?):thread:(.+)$/.exec(normalized);
   if (threadMatch) {
     const roomId = threadMatch[1]?.trim() ?? '';
     const threadEventId = threadMatch[2]?.trim();
     if (roomId && threadEventId) {
+      if (!isMatrixRoomId(roomId)) {
+        throw new Error(`invalid Matrix target: bad room id ${roomId}`);
+      }
       return {
         roomId,
         threadEventId,
         isDirect: false,
       };
     }
+    throw new Error('invalid Matrix target: malformed thread suffix');
+  }
+
+  if (!isMatrixRoomId(normalized)) {
+    throw new Error(`invalid Matrix target: bad room id ${normalized}`);
   }
 
   return {

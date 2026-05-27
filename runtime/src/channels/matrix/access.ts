@@ -33,10 +33,10 @@ export class MatrixAccessControl {
   }
 
   checkRoom(roomId: string, isDirect: boolean): MatrixAccessDecision {
-    if (isDirect) return { allowed: true };
-    if (this.roomWildcard) return { allowed: true };
     const normalized = roomId.trim();
     if (!normalized) return { allowed: false, reason: 'missing-room-id' };
+    if (isDirect) return { allowed: true };
+    if (this.roomWildcard) return { allowed: true };
     if (this.allowedRooms.has(normalized)) return { allowed: true };
     return { allowed: false, reason: 'room-not-allowed' };
   }
