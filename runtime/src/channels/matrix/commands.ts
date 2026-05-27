@@ -24,6 +24,10 @@ function commandName(content: string): string | null {
   return name || null;
 }
 
+export function isMatrixSlashCommand(content: string): boolean {
+  return commandName(content) !== null;
+}
+
 export async function handleMatrixCommand(ctx: MatrixCommandContext): Promise<boolean> {
   const name = commandName(ctx.content);
   if (!name) return false;

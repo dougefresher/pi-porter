@@ -72,6 +72,9 @@ export class PorterDaemon {
           allowedSenders: this.config.matrix.allowedSenders,
           allowedRooms: this.config.matrix.allowedRooms,
           autoJoinInvites: this.config.matrix.autoJoinInvites,
+          requireMention: this.config.matrix.requireMention,
+          replyPrefix: this.config.matrix.replyPrefix,
+          formatHtml: this.config.matrix.formatHtml,
         }),
       );
     }

@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent';
 import type { PorterConfig } from '../config.js';
+import { assistantErrorText } from './agent-error-text.js';
 import type { AgentRunInput, AgentRunner } from './runner.js';
 import { currentSessionFileForKey, sessionDirForKey } from './session-paths.js';
 
@@ -70,6 +71,8 @@ export class PiAgentRunner implements AgentRunner {
         clearTimeout(timeout);
       }
       const streamed = chunks.join('').trim();
+      const errorText = assistantErrorText(session.state.messages);
+      if (errorText) return errorText;
       return streamed || finalAssistantText(session) || '(no response)';
     } finally {
       unsubscribe();

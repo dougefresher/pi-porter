@@ -10,13 +10,17 @@ import {
   SyncState,
 } from 'matrix-js-sdk/lib/matrix.js';
 
+import { DirectRoomTracker } from './direct-rooms.js';
+import { buildMatrixMessageContent, readMatrixMessagePlainText } from './matrix-html.js';
 import { buildMatrixChatId, parseMatrixTarget } from './matrix-targets.js';
+import { buildReplyAwareContent, readFormattedBody, readMatrixMentions } from './reply-context.js';
 
 export interface MatrixChannelOpts {
   homeserverUrl: string;
   accessToken: string;
   userId?: string;
-  assistantName?: string;
+  replyPrefix?: string;
+  formatHtml?: boolean;
   autoJoinInvites?: boolean;
   onMessage: (message: MatrixInboundMessage) => Promise<void> | void;
   onConnected?: (userId: string) => void;
@@ -32,6 +36,13 @@ export type MatrixInboundMessage = {
   senderId?: string;
   eventId?: string;
   threadEventId?: string;
+  replyToEventId?: string;
+  formattedBody?: string;
+  mMentions?: { user_ids?: string[]; room?: boolean };
+};
+
+export type MatrixSendOptions = {
+  replyToEventId?: string;
 };
 
 function logInfo(message: string, details?: Record<string, unknown>): void {
@@ -46,23 +57,12 @@ function logError(message: string, details?: Record<string, unknown>): void {
   console.error(`[matrix] ${message}`, details || {});
 }
 
-function readMessageBody(event: MatrixEvent): string {
-  const content = event.getContent();
-  const msgtype = typeof content.msgtype === 'string' ? content.msgtype : '';
-  if (msgtype !== 'm.text' && msgtype !== 'm.notice') return '';
-  return typeof content.body === 'string' ? content.body : '';
-}
-
 function readThreadRootEventId(event: MatrixEvent): string | undefined {
   const relation = event.getContent()?.['m.relates_to'] as { rel_type?: string; event_id?: string } | undefined;
   if (relation?.rel_type === 'm.thread' && typeof relation.event_id === 'string') {
     return relation.event_id;
   }
   return undefined;
-}
-
-function isDirectRoom(room: Room): boolean {
-  return room.getJoinedMemberCount() === 2;
 }
 
 const DEFAULT_MATRIX_SYNC_TIMEOUT_MS = 120_000;
@@ -77,13 +77,15 @@ export class MatrixChannel {
   private connected = false;
   private stopped = false;
   private userId: string | null = null;
+  private directRooms: DirectRoomTracker | null = null;
   private opts: MatrixChannelOpts;
 
   constructor(opts: MatrixChannelOpts) {
-    this.opts = {
-      ...opts,
-      assistantName: opts.assistantName || process.env.PICLAW_ASSISTANT_NAME || process.env.ASSISTANT_NAME || 'Pi',
-    };
+    this.opts = opts;
+  }
+
+  getUserId(): string | null {
+    return this.userId;
   }
 
   async connect(): Promise<void> {
@@ -105,6 +107,9 @@ export class MatrixChannel {
     } else {
       this.userId = this.opts.userId.trim();
     }
+
+    this.directRooms = new DirectRoomTracker(client);
+    this.directRooms.attach();
 
     if (this.opts.autoJoinInvites) {
       client.on(RoomEvent.MyMembership, (room, membership, prevMembership) => {
@@ -140,6 +145,7 @@ export class MatrixChannel {
 
       const onSync = (state: SyncState, _prevState: SyncState | null, data?: { error?: Error }) => {
         if (state === SyncState.Prepared) {
+          this.directRooms?.refreshFromAccountData();
           client.on(RoomEvent.Timeline, (event, room, toStartOfTimeline, removed, data) => {
             if (toStartOfTimeline || removed || !room || !data?.liveEvent) return;
             this.handleTimelineEvent(event, room).catch((error) => {
@@ -193,6 +199,7 @@ export class MatrixChannel {
 
     const client = this.client;
     this.client = null;
+    this.directRooms = null;
     if (!client) return Promise.resolve();
 
     try {
@@ -211,17 +218,27 @@ export class MatrixChannel {
     return this.connected;
   }
 
-  async sendMessage(chatId: string, text: string): Promise<void> {
+  async sendMessage(chatId: string, text: string, sendOptions?: MatrixSendOptions): Promise<void> {
     if (!this.connected || !this.client) throw new Error('Matrix channel is not connected.');
 
     const target = parseMatrixTarget(chatId);
     if (!target.roomId.trim()) {
       throw new Error(`invalid Matrix chat id: ${chatId}`);
     }
-    const messageText = `${this.opts.assistantName}: ${text}`;
+
+    const room = this.client.getRoom(target.roomId);
+    const isDirect = room && this.directRooms ? this.directRooms.isDirectRoom(room) : false;
+    const content = buildMatrixMessageContent({
+      text,
+      prefix: this.opts.replyPrefix,
+      isDirect,
+      formatHtml: this.opts.formatHtml,
+      replyToEventId: sendOptions?.replyToEventId,
+      threadEventId: target.threadEventId,
+    });
 
     try {
-      await this.client.sendTextMessage(target.roomId, messageText);
+      await this.client.sendMessage(target.roomId, content);
     } catch (error) {
       logWarn('send failed', {
         operation: 'matrix.send_message',
@@ -256,11 +273,20 @@ export class MatrixChannel {
     const isFromMe = Boolean(this.userId && senderId === this.userId);
     if (isFromMe) return;
 
-    const content = readMessageBody(event);
-    if (!content.trim()) return;
+    const rawContent = event.getContent() as Record<string, unknown>;
+    const msgtype = typeof rawContent.msgtype === 'string' ? rawContent.msgtype : '';
+    if (msgtype !== 'm.text' && msgtype !== 'm.notice') return;
+
+    const userContent = readMatrixMessagePlainText(rawContent);
+    if (!userContent.trim()) return;
+
+    const client = this.client;
+    if (!client) return;
+
+    const { content, replyToEventId } = await buildReplyAwareContent(client, room, event, userContent);
 
     const roomId = room.roomId;
-    const isDirect = isDirectRoom(room);
+    const isDirect = this.directRooms?.isDirectRoom(room) ?? false;
     const threadEventId = readThreadRootEventId(event);
     const chatId = buildMatrixChatId(roomId, { threadEventId, isDirect });
 
@@ -273,6 +299,9 @@ export class MatrixChannel {
       senderId,
       eventId: event.getId() ?? undefined,
       threadEventId,
+      replyToEventId,
+      formattedBody: readFormattedBody(rawContent),
+      mMentions: readMatrixMentions(rawContent),
     });
   }
 }

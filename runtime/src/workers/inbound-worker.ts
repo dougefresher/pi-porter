@@ -174,7 +174,11 @@ export class InboundWorker {
           accountId: event.accountId,
           chatId: event.chatId,
           content: reply,
-          metadata: { inboundId: event.id },
+          metadata: {
+            inboundId: event.id,
+            replyToEventId:
+              typeof event.metadata.replyToEventId === 'string' ? event.metadata.replyToEventId : undefined,
+          },
         });
       }
 

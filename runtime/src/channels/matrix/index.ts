@@ -5,8 +5,9 @@ import { SessionStore } from '../../db/session-store.js';
 import { parseSessionKey } from '../../routing/session-key.js';
 import type { ChannelRuntime } from '../types.js';
 import { MatrixAccessControl } from './access.js';
-import { handleMatrixCommand } from './commands.js';
+import { handleMatrixCommand, isMatrixSlashCommand } from './commands.js';
 import { MatrixChannel } from './matrix.js';
+import { isMatrixMentioned, stripMatrixMentionPrefix } from './mentions.js';
 import { buildMatrixSessionKey } from './session.js';
 
 export type MatrixRuntimeOptions = {
@@ -20,6 +21,9 @@ export type MatrixRuntimeOptions = {
   allowedSenders: string[];
   allowedRooms: string[];
   autoJoinInvites: boolean;
+  requireMention: boolean;
+  replyPrefix: string;
+  formatHtml: boolean;
 };
 
 export class MatrixRuntime implements ChannelRuntime {
@@ -29,6 +33,7 @@ export class MatrixRuntime implements ChannelRuntime {
   private sessionStore: SessionStore;
   private sessionArchiveStore: SessionArchiveStore;
   private sessionRoot: string;
+  private requireMention: boolean;
   private channel: MatrixChannel;
 
   constructor(options: MatrixRuntimeOptions) {
@@ -37,11 +42,13 @@ export class MatrixRuntime implements ChannelRuntime {
     this.sessionStore = options.sessionStore;
     this.sessionArchiveStore = options.sessionArchiveStore;
     this.sessionRoot = options.sessionRoot;
+    this.requireMention = options.requireMention;
     this.channel = new MatrixChannel({
       homeserverUrl: options.homeserverUrl,
       accessToken: options.accessToken,
       userId: options.userId,
-      assistantName: 'porter',
+      replyPrefix: options.replyPrefix,
+      formatHtml: options.formatHtml,
       autoJoinInvites: options.autoJoinInvites,
       onMessage: async (message) => {
         if (message.isFromMe) return;
@@ -86,18 +93,39 @@ export class MatrixRuntime implements ChannelRuntime {
         });
         if (handled) return;
 
+        const botUserId = this.channel.getUserId() ?? options.userId ?? '';
+        if (
+          this.requireMention &&
+          !message.isDirect &&
+          !isMatrixSlashCommand(message.content) &&
+          !isMatrixMentioned({
+            body: message.content,
+            formattedBody: message.formattedBody,
+            mMentions: message.mMentions,
+            botUserId,
+          })
+        ) {
+          return;
+        }
+
+        let agentContent = message.content;
+        if (!message.isDirect && botUserId) {
+          agentContent = stripMatrixMentionPrefix(message.content, botUserId);
+        }
+
         const inboundId = await this.bus.publishMatrixInbound({
           sessionKey,
           channel: 'matrix',
           accountId: parsed.accountId,
           chatId: message.chatId,
           senderId: message.senderId ?? parsed.peerId,
-          content: message.content,
+          content: agentContent,
           metadata: {
             chatId: message.chatId,
             roomId: message.roomId,
             eventId: message.eventId,
             threadEventId: message.threadEventId,
+            replyToEventId: message.replyToEventId,
             isDirect: message.isDirect,
           },
         });
@@ -121,6 +149,9 @@ export class MatrixRuntime implements ChannelRuntime {
     }
     if (delivery.type === 'typing_off') return;
     if (!delivery.content) return;
-    await this.channel.sendMessage(delivery.chatId, delivery.content);
+
+    const replyToEventId =
+      typeof delivery.metadata.replyToEventId === 'string' ? delivery.metadata.replyToEventId : undefined;
+    await this.channel.sendMessage(delivery.chatId, delivery.content, { replyToEventId });
   }
 }
