@@ -19,6 +19,11 @@ function readCsvEnv(name: string): string[] {
     .filter(Boolean);
 }
 
+function readCsvEnvWithFallback(primary: string, secondary: string): string[] {
+  const primaryValues = readCsvEnv(primary);
+  return primaryValues.length > 0 ? primaryValues : readCsvEnv(secondary);
+}
+
 export type PorterConfig = {
   stateDir: string;
   configDir: string;
@@ -29,6 +34,15 @@ export type PorterConfig = {
     pollingTimeoutSeconds: number;
     allowedSenders: string[];
   };
+  matrix: {
+    enabled: boolean;
+    homeserverUrl: string;
+    accessToken: string;
+    userId: string;
+    allowedSenders: string[];
+    allowedRooms: string[];
+    autoJoinInvites: boolean;
+  };
 };
 
 export function loadConfig(): PorterConfig {
@@ -37,10 +51,30 @@ export function loadConfig(): PorterConfig {
   const telegramEnabled = ['1', 'true', 'yes', 'on'].includes(readEnv('PORTER_TELEGRAM_ENABLED', '0').toLowerCase());
   const botToken = readEnv('PORTER_TELEGRAM_BOT_TOKEN', readEnv('TELEGRAM_BOT_TOKEN'));
   const allowedSenders = readCsvEnv('PORTER_TELEGRAM_ALLOWED_SENDERS');
+  const matrixEnabled = ['1', 'true', 'yes', 'on'].includes(
+    readEnv('PORTER_MATRIX_ENABLED', readEnv('MATRIX_ENABLED', '0')).toLowerCase(),
+  );
+  const matrixHomeserverUrl = readEnv('PORTER_MATRIX_HOMESERVER_URL', readEnv('MATRIX_HOMESERVER_URL'));
+  const matrixAccessToken = readEnv('PORTER_MATRIX_ACCESS_TOKEN', readEnv('MATRIX_ACCESS_TOKEN'));
+  const matrixUserId = readEnv('PORTER_MATRIX_USER_ID', readEnv('MATRIX_USER_ID'));
+  const matrixAllowedSenders = readCsvEnvWithFallback('PORTER_MATRIX_ALLOWED_SENDERS', 'MATRIX_ALLOWED_SENDERS');
+  const matrixAllowedRooms = readCsvEnvWithFallback('PORTER_MATRIX_ALLOWED_ROOMS', 'MATRIX_ALLOWED_ROOMS');
+  const matrixAutoJoinInvites = ['1', 'true', 'yes', 'on'].includes(
+    readEnv('PORTER_MATRIX_AUTO_JOIN_INVITES', readEnv('MATRIX_AUTO_JOIN_INVITES', '1')).toLowerCase(),
+  );
 
   if (telegramEnabled && !botToken) throw new Error('Missing Telegram bot token: PORTER_TELEGRAM_BOT_TOKEN');
   if (telegramEnabled && allowedSenders.length === 0) {
     throw new Error('PORTER_TELEGRAM_ALLOWED_SENDERS must be non-empty when Telegram is enabled');
+  }
+  if (matrixEnabled && !matrixHomeserverUrl) {
+    throw new Error('Missing Matrix homeserver URL: PORTER_MATRIX_HOMESERVER_URL');
+  }
+  if (matrixEnabled && !matrixAccessToken) {
+    throw new Error('Missing Matrix access token: PORTER_MATRIX_ACCESS_TOKEN');
+  }
+  if (matrixEnabled && matrixAllowedSenders.length === 0) {
+    throw new Error('PORTER_MATRIX_ALLOWED_SENDERS must be non-empty when Matrix is enabled');
   }
 
   return {
@@ -52,6 +86,15 @@ export function loadConfig(): PorterConfig {
       botToken,
       pollingTimeoutSeconds: Number.parseInt(readEnv('PORTER_TELEGRAM_POLL_TIMEOUT_SECONDS', '30'), 10) || 30,
       allowedSenders,
+    },
+    matrix: {
+      enabled: matrixEnabled,
+      homeserverUrl: matrixHomeserverUrl,
+      accessToken: matrixAccessToken,
+      userId: matrixUserId,
+      allowedSenders: matrixAllowedSenders,
+      allowedRooms: matrixAllowedRooms,
+      autoJoinInvites: matrixAutoJoinInvites,
     },
   };
 }

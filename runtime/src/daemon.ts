@@ -1,6 +1,7 @@
 import { PiAgentRunner } from './agent/pi-runner.js';
 import { PostgresBus } from './bus/postgres-bus.js';
 import { ChannelManager } from './channels/manager.js';
+import { MatrixRuntime } from './channels/matrix/index.js';
 import { TelegramRuntime } from './channels/telegram/index.js';
 import { ensureRuntimeDirs, type PorterConfig } from './config.js';
 import { closeDb, type Db, getDb } from './db/client.js';
@@ -54,6 +55,23 @@ export class PorterDaemon {
           botToken: this.config.telegram.botToken,
           pollingTimeoutSeconds: this.config.telegram.pollingTimeoutSeconds,
           allowedSenders: this.config.telegram.allowedSenders,
+        }),
+      );
+    }
+
+    if (this.config.matrix.enabled) {
+      channels.register(
+        new MatrixRuntime({
+          bus,
+          sessionStore: sessions,
+          sessionArchiveStore: sessionArchives,
+          sessionRoot,
+          homeserverUrl: this.config.matrix.homeserverUrl,
+          accessToken: this.config.matrix.accessToken,
+          userId: this.config.matrix.userId || undefined,
+          allowedSenders: this.config.matrix.allowedSenders,
+          allowedRooms: this.config.matrix.allowedRooms,
+          autoJoinInvites: this.config.matrix.autoJoinInvites,
         }),
       );
     }

@@ -1,0 +1,21 @@
+[Unit]
+Description=Pi Porter Dev
+Documentation=https://github.com/dougefresher/pi-porter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/workspace
+EnvironmentFile=%h/workspace/.env
+ExecStart=%h/.local/bin/porter
+Restart=on-failure
+RestartSec=10s
+RestartSteps=4
+RestartMaxDelaySec=160s
+TimeoutStopSec=30
+KillSignal=SIGTERM
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 import type { OutboundDelivery } from '../bus/types.js';
 
-export type ChannelKind = 'web' | 'telegram' | 'scheduler' | 'cli';
+export type ChannelKind = 'web' | 'telegram' | 'matrix' | 'scheduler' | 'cli';
 
 export interface ChannelRuntime {
   id: ChannelKind;
