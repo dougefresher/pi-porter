@@ -43,7 +43,8 @@
     "@earendil-works/pi-agent-core": "0.75.5",
     "@earendil-works/pi-ai": "0.75.5",
     "@earendil-works/pi-coding-agent": "0.75.5",
-    "grammy": "1.38.0"
+    "grammy": "1.38.0",
+    "matrix-js-sdk": "41.6.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",

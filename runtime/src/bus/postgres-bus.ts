@@ -106,6 +106,18 @@ export class PostgresBus {
     `;
   }
 
+  async hasInboundMatrixEvent(eventId: string): Promise<boolean> {
+    const trimmed = eventId.trim();
+    if (!trimmed) return false;
+    const rows = (await this.db`
+      select 1 from inbound_events
+      where channel = 'matrix'
+        and metadata->>'eventId' = ${trimmed}
+      limit 1
+    `) as unknown[];
+    return rows.length > 0;
+  }
+
   async publishOutbound(delivery: NewOutboundDelivery): Promise<number> {
     const rows = (await this.db`
       insert into outbound_deliveries (
