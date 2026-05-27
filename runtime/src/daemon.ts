@@ -74,10 +74,15 @@ export class PorterDaemon {
     });
     this.outboundWorker = new OutboundWorker(bus, channels);
 
-    await channels.start();
-    this.outboundWorker.start();
-    this.inboundWorker.start();
-    await scheduler.start();
+    try {
+      await channels.start();
+      this.outboundWorker.start();
+      this.inboundWorker.start();
+      await scheduler.start();
+    } catch (error) {
+      await this.stop();
+      throw error;
+    }
 
     console.log('[porter] daemon started');
   }

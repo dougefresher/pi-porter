@@ -3,6 +3,18 @@ import { parseSessionEntries } from '@earendil-works/pi-coding-agent';
 import type { SessionArchiveStore } from '../db/session-archive-store.js';
 import { currentSessionFileForKey } from './session-paths.js';
 
+async function deleteSessionFile(
+  file: ReturnType<typeof Bun.file>,
+  context: { sessionKey: string; sessionFile: string; reason: string },
+): Promise<void> {
+  try {
+    await file.delete();
+  } catch (error) {
+    console.error('[archive] failed to delete session file', { ...context, error });
+    throw error;
+  }
+}
+
 export async function archiveAndClearPiSession(params: {
   sessionArchiveStore: SessionArchiveStore;
   sessionRoot: string;
@@ -16,7 +28,11 @@ export async function archiveAndClearPiSession(params: {
   const content = await file.text();
   const trimmed = content.trim();
   if (!trimmed) {
-    await file.delete();
+    await deleteSessionFile(file, {
+      sessionKey: params.sessionKey,
+      sessionFile,
+      reason: params.reason,
+    });
     return false;
   }
 
@@ -31,6 +47,10 @@ export async function archiveAndClearPiSession(params: {
     lineCount: content.split('\n').filter((line) => line.trim().length > 0).length,
     content,
   });
-  await file.delete();
+  await deleteSessionFile(file, {
+    sessionKey: params.sessionKey,
+    sessionFile,
+    reason: params.reason,
+  });
   return true;
 }

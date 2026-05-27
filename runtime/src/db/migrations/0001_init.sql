@@ -97,6 +97,10 @@ create table if not exists session_archive_contents (
   content bytea not null
 );
 
+create type schedule_type_t as enum ('cron', 'interval', 'once');
+create type scheduled_task_status_t as enum ('active', 'paused', 'completed');
+create type scheduled_task_run_status_t as enum ('success', 'error');
+
 create table if not exists scheduled_tasks (
   id text primary key,
   name text,
@@ -104,12 +108,12 @@ create table if not exists scheduled_tasks (
   agent_session_key text not null references sessions (session_key),
   report_session_key text references sessions (session_key),
   workdir text,
-  schedule_type text not null check (schedule_type in ('cron', 'interval', 'once')),
+  schedule_type schedule_type_t not null,
   schedule_value text not null,
   next_run timestamptz,
   last_run timestamptz,
   last_result text,
-  status text not null default 'active' check (status in ('active', 'paused', 'completed')),
+  status scheduled_task_status_t not null default 'active',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -125,7 +129,7 @@ create table if not exists scheduled_task_runs (
   inbound_id bigint references inbound_events (id) on delete set null,
   run_at timestamptz not null default now(),
   duration_ms integer,
-  status text not null check (status in ('success', 'error')),
+  status scheduled_task_run_status_t not null,
   result text,
   error text
 );

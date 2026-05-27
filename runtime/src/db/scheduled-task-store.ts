@@ -51,13 +51,17 @@ export class ScheduledTaskStore {
 
   async updateAfterRun(id: string, update: UpdateScheduledTaskAfterRun): Promise<void> {
     const nextStatus = update.status ?? (update.nextRun == null ? 'completed' : 'active');
+    const explicitStatus = update.status ?? null;
     await this.db`
       update scheduled_tasks
       set
         next_run = ${update.nextRun},
         last_run = now(),
         last_result = ${update.lastResult},
-        status = ${nextStatus},
+        status = case
+          when status = 'paused' and ${explicitStatus} is null then status
+          else ${nextStatus}::scheduled_task_status_t
+        end,
         updated_at = now()
       where id = ${id}
     `;

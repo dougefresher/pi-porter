@@ -146,7 +146,7 @@ const job = Bun.cron("*/5 * * * *", async () => {
 
 This is the lightweight option for long-running servers and workers — no system cron daemon required, works the same on every platform, and shares state (database pools, caches, module-level variables) between invocations.
 
-|                              | In-process                       | [OS-level](#bun-cron-path-schedule-title-os-level) |
+|                              | In-process                       | [OS-level](#buncronpath-schedule-title--os-level) |
 | ---------------------------- | -------------------------------- | -------------------------------------------------- |
 | Survives process exit/reboot | No                               | Yes                                                |
 | Shared state between runs    | Yes                              | No (fresh process each time)                       |
@@ -256,7 +256,7 @@ Bun uses [crontab](https://man7.org/linux/man-pages/man5/crontab.5.html) to regi
 
 The crontab entry looks like:
 
-```
+```text
 <schedule> '<bun-path>' run --cron-title=<title> --cron-period='<schedule>' '<script-path>'
 ```
 
@@ -296,7 +296,7 @@ crontab -l | grep -v "# bun-cron:" | grep -v "\-\-cron-title=" | crontab -
 
 Bun uses [launchd](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html) to register jobs. Each job is installed as a plist file at:
 
-```
+```text
 ~/Library/LaunchAgents/bun.cron.<title>.plist
 ```
 
@@ -310,7 +310,7 @@ launchctl list | grep bun.cron
 
 **Logs:** stdout and stderr are written to:
 
-```
+```text
 /tmp/bun.cron.<title>.stdout.log
 /tmp/bun.cron.<title>.stderr.log
 ```

@@ -12,7 +12,7 @@ export type SessionArchive = {
   createdAt: Date;
 };
 
-function compressContent(content: string): { compressed: Buffer; contentBytes: number } {
+function compressContent(content: string): { compressed: Uint8Array; contentBytes: number } {
   const raw = Buffer.from(content, 'utf8');
   return {
     compressed: Bun.zstdCompressSync(raw, { level: ZSTD_LEVEL }),

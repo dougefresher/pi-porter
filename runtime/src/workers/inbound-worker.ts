@@ -135,29 +135,30 @@ export class InboundWorker {
           result: reply,
         });
 
-        if (scheduled.reportSessionKey) {
-          const target = resolveOutboundFromSessionKey(scheduled.reportSessionKey);
-          if (target) {
-            await this.bus.publishOutbound({
-              inboundId: event.id,
-              sessionKey: scheduled.reportSessionKey,
-              channel: target.channel,
-              accountId: target.accountId,
-              chatId: target.chatId,
-              content: reply,
-              metadata: {
-                inboundId: event.id,
-                scheduled: true,
-                taskId: scheduled.taskId,
-              },
-            });
-          } else {
-            console.warn('[inbound-worker] unsupported report session key', {
-              reportSessionKey: scheduled.reportSessionKey,
-              taskId: scheduled.taskId,
-            });
-          }
+        const reportTarget = scheduled.reportSessionKey
+          ? resolveOutboundFromSessionKey(scheduled.reportSessionKey)
+          : null;
+
+        if (scheduled.reportSessionKey && !reportTarget) {
+          console.warn('[inbound-worker] unsupported report session key; falling back to event target', {
+            reportSessionKey: scheduled.reportSessionKey,
+            taskId: scheduled.taskId,
+          });
         }
+
+        await this.bus.publishOutbound({
+          inboundId: event.id,
+          sessionKey: reportTarget ? scheduled.reportSessionKey! : event.sessionKey,
+          channel: reportTarget?.channel ?? event.channel,
+          accountId: reportTarget?.accountId ?? event.accountId,
+          chatId: reportTarget?.chatId ?? event.chatId,
+          content: reply,
+          metadata: {
+            inboundId: event.id,
+            scheduled: true,
+            taskId: scheduled.taskId,
+          },
+        });
 
         if (scheduled.taskId) {
           await this.recordScheduledSuccess(scheduled.taskId, event.id, startedAt, reply);
@@ -180,22 +181,32 @@ export class InboundWorker {
       await this.sessions.bumpMessageCount(event.sessionKey, 2);
       await this.bus.markInboundDone(event.id);
     } catch (error) {
-      if (scheduled.isScheduled) {
-        if (scheduled.taskId) {
-          await appendCronLog(this.options.stateDir, {
-            taskId: scheduled.taskId,
-            taskName: scheduled.taskName,
-            status: 'error',
-            durationMs: Date.now() - startedAt,
-            prompt: event.content,
-            error,
-          });
-          await this.recordScheduledFailure(scheduled.taskId, event.id, startedAt, error);
-          await this.options.scheduler?.notifyTaskComplete(scheduled.taskId);
+      try {
+        if (scheduled.isScheduled) {
+          if (scheduled.taskId) {
+            await appendCronLog(this.options.stateDir, {
+              taskId: scheduled.taskId,
+              taskName: scheduled.taskName,
+              status: 'error',
+              durationMs: Date.now() - startedAt,
+              prompt: event.content,
+              error,
+            });
+            await this.recordScheduledFailure(scheduled.taskId, event.id, startedAt, error);
+            await this.options.scheduler?.notifyTaskComplete(scheduled.taskId);
+          }
+          await this.archiveScheduledSession(event.sessionKey, scheduled.taskId);
         }
-        await this.archiveScheduledSession(event.sessionKey, scheduled.taskId);
+      } catch (bookkeepingError) {
+        console.error('[inbound-worker] scheduled failure bookkeeping failed', {
+          inboundId: event.id,
+          taskId: scheduled.taskId,
+          bookkeepingError,
+          originalError: error,
+        });
+      } finally {
+        await this.bus.markInboundFailed(event.id, error);
       }
-      await this.bus.markInboundFailed(event.id, error);
     } finally {
       this.sessionLocks.delete(event.sessionKey);
     }

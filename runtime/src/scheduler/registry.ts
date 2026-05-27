@@ -27,12 +27,12 @@ export class SchedulerRegistry {
 
   async start(): Promise<void> {
     if (this.started) return;
-    this.started = true;
 
     const tasks = await this.store.listActive();
     for (const task of tasks) {
       this.register(task);
     }
+    this.started = true;
     console.log('[scheduler] registry started', { activeTasks: tasks.length });
   }
 
@@ -117,39 +117,59 @@ export class SchedulerRegistry {
   private async fire(taskId: string): Promise<void> {
     if (!this.started) return;
 
-    const task = await this.store.getById(taskId);
-    if (!task || task.status !== 'active') {
-      this.disarm(taskId);
-      return;
-    }
+    let task: ScheduledTask | null = null;
+    try {
+      task = await this.store.getById(taskId);
+      if (!task || task.status !== 'active') {
+        this.disarm(taskId);
+        return;
+      }
 
-    const parsed = parseSessionKey(task.agentSessionKey);
-    if (!parsed) {
-      console.error('[scheduler] invalid agent session key', {
-        taskId: task.id,
-        agentSessionKey: task.agentSessionKey,
+      const parsed = parseSessionKey(task.agentSessionKey);
+      if (!parsed) {
+        console.error('[scheduler] invalid agent session key', {
+          taskId: task.id,
+          agentSessionKey: task.agentSessionKey,
+        });
+        await this.rearmIntervalOnFireFailure(task);
+        return;
+      }
+
+      await this.sessions.ensureSession(task.agentSessionKey, parsed);
+
+      console.log('[scheduler] firing task', { taskId: task.id, name: task.name, scheduleType: task.scheduleType });
+
+      await this.bus.publishInbound({
+        sessionKey: task.agentSessionKey,
+        channel: 'scheduler',
+        accountId: 'default',
+        chatId: task.id,
+        senderId: 'scheduler',
+        content: task.prompt,
+        metadata: {
+          scheduled: true,
+          taskId: task.id,
+          taskName: task.name,
+          reportSessionKey: task.reportSessionKey,
+          ...(task.workdir ? { workdir: task.workdir } : {}),
+        },
       });
-      return;
+    } catch (error) {
+      console.error('[scheduler] task fire failed', { taskId, error });
+      await this.rearmIntervalOnFireFailure(task);
     }
+  }
 
-    await this.sessions.ensureSession(task.agentSessionKey, parsed);
+  private async rearmIntervalOnFireFailure(task: ScheduledTask | null): Promise<void> {
+    if (!task || task.scheduleType !== 'interval') return;
+    await this.rearmIntervalTask(task.id);
+  }
 
-    console.log('[scheduler] firing task', { taskId: task.id, name: task.name, scheduleType: task.scheduleType });
-
-    await this.bus.publishInbound({
-      sessionKey: task.agentSessionKey,
-      channel: 'scheduler',
-      accountId: 'default',
-      chatId: task.id,
-      senderId: 'scheduler',
-      content: task.prompt,
-      metadata: {
-        scheduled: true,
-        taskId: task.id,
-        taskName: task.name,
-        reportSessionKey: task.reportSessionKey,
-        ...(task.workdir ? { workdir: task.workdir } : {}),
-      },
-    });
+  private async rearmIntervalTask(taskId: string): Promise<void> {
+    if (!this.started) return;
+    this.disarm(taskId);
+    const task = await this.store.getById(taskId);
+    if (!task || task.status !== 'active' || task.scheduleType !== 'interval') return;
+    this.register(task);
   }
 }

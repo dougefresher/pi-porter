@@ -19,7 +19,8 @@ export function computeNextRun(
   }
 
   if (scheduleType === 'interval') {
-    const ms = Number.parseInt(scheduleValue, 10);
+    if (!/^\d+$/.test(scheduleValue.trim())) return null;
+    const ms = Number(scheduleValue);
     if (!Number.isFinite(ms) || ms <= 0) return null;
     return new Date(Date.now() + ms);
   }

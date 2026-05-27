@@ -1,4 +1,5 @@
-import { join } from 'node:path';
+import { appendFile, mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 export type CronLogEntry = {
   taskId: string;
@@ -35,9 +36,8 @@ function formatBlock(entry: CronLogEntry): string {
 }
 
 async function appendToFile(path: string, chunk: string): Promise<void> {
-  const file = Bun.file(path);
-  const existing = (await file.exists()) ? await file.text() : '';
-  await Bun.write(path, `${existing}${chunk}`, { createPath: true });
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, chunk, 'utf8');
 }
 
 export async function appendCronLog(stateDir: string, entry: CronLogEntry): Promise<void> {
