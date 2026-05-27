@@ -44,6 +44,15 @@ describe('isMatrixMentioned', () => {
       }),
     ).toBe(false);
   });
+
+  test('does not treat localpart substring as mention', () => {
+    expect(
+      isMatrixMentioned({
+        body: '@bother is unrelated',
+        botUserId: '@bot:localhost',
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('stripMatrixMentionPrefix', () => {
@@ -85,6 +94,12 @@ describe('matrix-html', () => {
     expect(sanitized).toContain('ok');
   });
 
+  test('strips unsafe link href schemes', () => {
+    const sanitized = sanitizeMatrixHtml('<a href="javascript:alert(1)">x</a>');
+    expect(sanitized).not.toContain('javascript:');
+    expect(sanitized).toContain('x');
+  });
+
   test('renders markdown bold and code', () => {
     const formatted = markdownToMatrixHtml('**bold** and `code`', { isDirect: true });
     expect(formatted.formatted_body).toContain('<strong>bold</strong>');
@@ -113,5 +128,9 @@ describe('assistantErrorText', () => {
   test('truncates long errors', () => {
     const long = 'x'.repeat(600);
     expect(sanitizeAgentErrorText(long).length).toBeLessThanOrEqual(501);
+  });
+
+  test('redacts sk keys with underscores and hyphens', () => {
+    expect(sanitizeAgentErrorText('bad key sk-test_key_1234567890')).toBe('bad key [redacted]');
   });
 });

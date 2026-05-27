@@ -36,8 +36,10 @@ export function isMatrixMentioned(input: MatrixMentionInput): boolean {
   for (const source of sources) {
     const lower = source.toLowerCase();
     if (/\B@room\b/.test(lower)) return true;
-    if (lower.includes(`@${localpart}`)) return true;
-    if (lower.includes(botUserId)) return true;
+    const localpartPattern = new RegExp(`(^|\\s|[<(])@${escapeRegExp(localpart)}(?=\\b|[>:,)\\]]|$)`, 'i');
+    const fullIdPattern = new RegExp(`(^|\\s|[<(])${escapeRegExp(botUserId)}(?=\\b|[>:,)\\]]|$)`, 'i');
+    if (localpartPattern.test(source)) return true;
+    if (fullIdPattern.test(source)) return true;
   }
 
   return false;

@@ -11,7 +11,7 @@ export function readInReplyToEventId(event: MatrixEvent): string | undefined {
       }
     | undefined;
   const eventId = relatesTo?.['m.in_reply_to']?.event_id;
-  return typeof eventId === 'string' && eventId.trim() ? eventId : undefined;
+  return typeof eventId === 'string' && eventId.trim() ? eventId.trim() : undefined;
 }
 
 function readSenderLabel(event: MatrixEvent): string {

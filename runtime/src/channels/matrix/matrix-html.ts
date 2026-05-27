@@ -49,6 +49,10 @@ export function sanitizeMatrixHtml(html: string): string {
     })
     .on('a', {
       element(element) {
+        const href = element.getAttribute('href')?.trim() ?? '';
+        if (href && !/^(https?:|mailto:|matrix:|\/)/i.test(href)) {
+          element.removeAttribute('href');
+        }
         element.setAttribute('rel', 'noopener noreferrer');
         element.setAttribute('target', '_blank');
       },

@@ -1,4 +1,4 @@
-const API_KEY_PATTERN = /(?:sk-[a-zA-Z0-9]{10,}|api[_-]?key[=:\s]+[a-zA-Z0-9_-]{10,})/gi;
+const API_KEY_PATTERN = /(?:sk-[a-zA-Z0-9_-]{10,}|api[_-]?key[=:\s]+[a-zA-Z0-9._-]{10,})/gi;
 
 export function sanitizeAgentErrorText(raw: string, maxLen = 500): string {
   let text = raw.trim().replace(API_KEY_PATTERN, '[redacted]');

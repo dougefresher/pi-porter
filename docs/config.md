@@ -7,7 +7,7 @@ Boolean env values: `1`, `true`, `yes`, or `on` (case-insensitive). CSV lists ar
 ## Core
 
 | Variable | Default | Notes |
-|----------|---------|-------|
+| ---------- | --------- | ------- |
 | `PORTER_STATE_DIR` | `~/.local/state/porter` | Runtime state, Pi sessions, cron logs |
 | `PORTER_CONFIG_DIR` | `~/.config/porter` | Reserved for future config files |
 | `DATABASE_URL` | — | PostgreSQL connection URL (required) |
@@ -15,7 +15,7 @@ Boolean env values: `1`, `true`, `yes`, or `on` (case-insensitive). CSV lists ar
 ## Agent
 
 | Variable | Default | Notes |
-|----------|---------|-------|
+| ---------- | --------- | ------- |
 | `PORTER_AGENT_PROMPT_TIMEOUT_MS` | `900000` | Max time per agent prompt (ms) |
 
 Model/provider/tool settings come from Pi global and project-local config — porter does not define a parallel model env layer.
@@ -23,7 +23,7 @@ Model/provider/tool settings come from Pi global and project-local config — po
 ## Telegram
 
 | Variable | Default | Notes |
-|----------|---------|-------|
+| ---------- | --------- | ------- |
 | `PORTER_TELEGRAM_ENABLED` | `0` | Enable Telegram long polling |
 | `PORTER_TELEGRAM_BOT_TOKEN` | — | Required when enabled. Fallback: `TELEGRAM_BOT_TOKEN` |
 | `PORTER_TELEGRAM_ALLOWED_SENDERS` | — | Required when enabled. Numeric sender IDs; `*` allows all |
@@ -32,7 +32,7 @@ Model/provider/tool settings come from Pi global and project-local config — po
 ## Matrix
 
 | Variable | Default | Notes |
-|----------|---------|-------|
+| ---------- | --------- | ------- |
 | `PORTER_MATRIX_ENABLED` | `0` | Enable Matrix sync. Fallback: `MATRIX_ENABLED` |
 | `PORTER_MATRIX_HOMESERVER_URL` | — | Required when enabled. Fallback: `MATRIX_HOMESERVER_URL` |
 | `PORTER_MATRIX_ACCESS_TOKEN` | — | Required when enabled. Fallback: `MATRIX_ACCESS_TOKEN` |
@@ -45,6 +45,6 @@ Model/provider/tool settings come from Pi global and project-local config — po
 | `PORTER_MATRIX_FORMAT_HTML` | `1` | Send `formatted_body` HTML for agent replies |
 | `PORTER_MATRIX_SYNC_TIMEOUT_MS` | `120000` | Startup sync deadline (read in matrix channel, not `config.ts`) |
 
-## Legacy aliases
+## Legacy Aliases
 
 Some Matrix/Telegram vars accept shorter names without the `PORTER_` prefix (see fallbacks above). Prefer `PORTER_*` for new setups.
