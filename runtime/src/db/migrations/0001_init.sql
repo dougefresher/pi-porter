@@ -86,8 +86,52 @@ create table if not exists session_archives (
   reason text not null,
   pi_session_id text,
   line_count integer not null,
-  content text not null,
+  content_bytes integer not null,
   created_at timestamptz not null default now()
 );
 
 create index if not exists session_archives_session_idx on session_archives (session_key, id);
+
+create table if not exists session_archive_contents (
+  archive_id bigint primary key references session_archives (id) on delete cascade,
+  content bytea not null
+);
+
+create type schedule_type_t as enum ('cron', 'interval', 'once');
+create type scheduled_task_status_t as enum ('active', 'paused', 'completed');
+create type scheduled_task_run_status_t as enum ('success', 'error');
+
+create table if not exists scheduled_tasks (
+  id text primary key,
+  name text,
+  prompt text not null,
+  agent_session_key text not null references sessions (session_key),
+  report_session_key text references sessions (session_key),
+  workdir text,
+  schedule_type schedule_type_t not null,
+  schedule_value text not null,
+  next_run timestamptz,
+  last_run timestamptz,
+  last_result text,
+  status scheduled_task_status_t not null default 'active',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists scheduled_tasks_due_idx on scheduled_tasks (next_run, id)
+  where status = 'active' and next_run is not null;
+
+create index if not exists scheduled_tasks_status_idx on scheduled_tasks (status);
+
+create table if not exists scheduled_task_runs (
+  id bigserial primary key,
+  task_id text not null references scheduled_tasks (id) on delete cascade,
+  inbound_id bigint references inbound_events (id) on delete set null,
+  run_at timestamptz not null default now(),
+  duration_ms integer,
+  status scheduled_task_run_status_t not null,
+  result text,
+  error text
+);
+
+create index if not exists scheduled_task_runs_task_idx on scheduled_task_runs (task_id, id);

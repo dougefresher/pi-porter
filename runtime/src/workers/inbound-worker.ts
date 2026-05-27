@@ -1,8 +1,42 @@
+import { archiveAndClearPiSession } from '../agent/archive-pi-session.js';
 import type { AgentRunner } from '../agent/runner.js';
 import type { PostgresBus } from '../bus/postgres-bus.js';
 import type { InboundEvent } from '../bus/types.js';
+import type { ScheduledTaskStore } from '../db/scheduled-task-store.js';
+import type { SessionArchiveStore } from '../db/session-archive-store.js';
 import { SessionStore } from '../db/session-store.js';
 import { TranscriptStore } from '../db/transcript-store.js';
+import { appendCronLog, computeNextRun, resolveOutboundFromSessionKey } from '../scheduler/index.js';
+import type { SchedulerRegistry } from '../scheduler/registry.js';
+
+export type InboundWorkerOptions = {
+  stateDir: string;
+  sessionRoot: string;
+  sessionArchiveStore: SessionArchiveStore;
+  scheduledTasks: ScheduledTaskStore;
+  scheduler?: SchedulerRegistry;
+};
+
+function readWorkdir(metadata: Record<string, unknown>): string | undefined {
+  const workdir = metadata.workdir;
+  if (typeof workdir !== 'string') return undefined;
+  const trimmed = workdir.trim();
+  return trimmed || undefined;
+}
+
+function readScheduledMetadata(metadata: Record<string, unknown>): {
+  isScheduled: boolean;
+  taskId: string | null;
+  taskName: string | null;
+  reportSessionKey: string | null;
+} {
+  return {
+    isScheduled: metadata.scheduled === true,
+    taskId: typeof metadata.taskId === 'string' ? metadata.taskId : null,
+    taskName: typeof metadata.taskName === 'string' ? metadata.taskName : null,
+    reportSessionKey: typeof metadata.reportSessionKey === 'string' ? metadata.reportSessionKey : null,
+  };
+}
 
 export class InboundWorker {
   private stopped = false;
@@ -11,14 +45,22 @@ export class InboundWorker {
 
   private agent: AgentRunner;
   private bus: PostgresBus;
+  private options: InboundWorkerOptions;
   private sessions: SessionStore;
   private transcripts: TranscriptStore;
 
-  constructor(bus: PostgresBus, sessions: SessionStore, transcripts: TranscriptStore, agent: AgentRunner) {
+  constructor(
+    bus: PostgresBus,
+    sessions: SessionStore,
+    transcripts: TranscriptStore,
+    agent: AgentRunner,
+    options: InboundWorkerOptions,
+  ) {
     this.bus = bus;
     this.sessions = sessions;
     this.transcripts = transcripts;
     this.agent = agent;
+    this.options = options;
   }
 
   start(): void {
@@ -57,6 +99,9 @@ export class InboundWorker {
     if (this.stopped) return;
 
     this.sessionLocks.add(event.sessionKey);
+    const startedAt = Date.now();
+    const scheduled = readScheduledMetadata(event.metadata);
+
     try {
       await this.transcripts.append({
         sessionKey: event.sessionKey,
@@ -71,6 +116,7 @@ export class InboundWorker {
         inboundId: event.id,
         text: event.content,
         metadata: event.metadata,
+        cwd: readWorkdir(event.metadata),
       });
       await this.transcripts.append({
         sessionKey: event.sessionKey,
@@ -79,21 +125,156 @@ export class InboundWorker {
         content: reply,
       });
 
-      await this.bus.publishOutbound({
-        inboundId: event.id,
-        sessionKey: event.sessionKey,
-        channel: event.channel,
-        accountId: event.accountId,
-        chatId: event.chatId,
-        content: reply,
-        metadata: { inboundId: event.id },
-      });
+      if (scheduled.isScheduled) {
+        await appendCronLog(this.options.stateDir, {
+          taskId: scheduled.taskId ?? 'unknown',
+          taskName: scheduled.taskName,
+          status: 'success',
+          durationMs: Date.now() - startedAt,
+          prompt: event.content,
+          result: reply,
+        });
+
+        const reportTarget = scheduled.reportSessionKey
+          ? resolveOutboundFromSessionKey(scheduled.reportSessionKey)
+          : null;
+
+        if (scheduled.reportSessionKey && !reportTarget) {
+          console.warn('[inbound-worker] unsupported report session key; falling back to event target', {
+            reportSessionKey: scheduled.reportSessionKey,
+            taskId: scheduled.taskId,
+          });
+        }
+
+        await this.bus.publishOutbound({
+          inboundId: event.id,
+          sessionKey: reportTarget ? scheduled.reportSessionKey! : event.sessionKey,
+          channel: reportTarget?.channel ?? event.channel,
+          accountId: reportTarget?.accountId ?? event.accountId,
+          chatId: reportTarget?.chatId ?? event.chatId,
+          content: reply,
+          metadata: {
+            inboundId: event.id,
+            scheduled: true,
+            taskId: scheduled.taskId,
+          },
+        });
+
+        if (scheduled.taskId) {
+          await this.recordScheduledSuccess(scheduled.taskId, event.id, startedAt, reply);
+          await this.options.scheduler?.notifyTaskComplete(scheduled.taskId);
+        }
+
+        await this.archiveScheduledSession(event.sessionKey, scheduled.taskId);
+      } else {
+        await this.bus.publishOutbound({
+          inboundId: event.id,
+          sessionKey: event.sessionKey,
+          channel: event.channel,
+          accountId: event.accountId,
+          chatId: event.chatId,
+          content: reply,
+          metadata: { inboundId: event.id },
+        });
+      }
+
       await this.sessions.bumpMessageCount(event.sessionKey, 2);
       await this.bus.markInboundDone(event.id);
     } catch (error) {
-      await this.bus.markInboundFailed(event.id, error);
+      try {
+        if (scheduled.isScheduled) {
+          if (scheduled.taskId) {
+            await appendCronLog(this.options.stateDir, {
+              taskId: scheduled.taskId,
+              taskName: scheduled.taskName,
+              status: 'error',
+              durationMs: Date.now() - startedAt,
+              prompt: event.content,
+              error,
+            });
+            await this.recordScheduledFailure(scheduled.taskId, event.id, startedAt, error);
+            await this.options.scheduler?.notifyTaskComplete(scheduled.taskId);
+          }
+          await this.archiveScheduledSession(event.sessionKey, scheduled.taskId);
+        }
+      } catch (bookkeepingError) {
+        console.error('[inbound-worker] scheduled failure bookkeeping failed', {
+          inboundId: event.id,
+          taskId: scheduled.taskId,
+          bookkeepingError,
+          originalError: error,
+        });
+      } finally {
+        await this.bus.markInboundFailed(event.id, error);
+      }
     } finally {
       this.sessionLocks.delete(event.sessionKey);
     }
+  }
+
+  private async archiveScheduledSession(sessionKey: string, taskId: string | null): Promise<void> {
+    try {
+      const archived = await archiveAndClearPiSession({
+        sessionArchiveStore: this.options.sessionArchiveStore,
+        sessionRoot: this.options.sessionRoot,
+        sessionKey,
+        reason: 'scheduled_run',
+      });
+      if (archived) {
+        console.log('[inbound-worker] archived scheduled session', { sessionKey, taskId });
+      }
+    } catch (error) {
+      console.error('[inbound-worker] scheduled session archive failed', { sessionKey, taskId, error });
+    }
+  }
+
+  private async recordScheduledSuccess(
+    taskId: string,
+    inboundId: number,
+    startedAt: number,
+    reply: string,
+  ): Promise<void> {
+    const task = await this.options.scheduledTasks.getById(taskId);
+    if (!task) return;
+
+    const nextRun = computeNextRun(task.scheduleType, task.scheduleValue);
+    const lastResult = reply.slice(0, 200) || 'Completed';
+    await this.options.scheduledTasks.updateAfterRun(taskId, {
+      nextRun,
+      lastResult,
+      status: nextRun == null ? 'completed' : undefined,
+    });
+    await this.options.scheduledTasks.logRun({
+      taskId,
+      inboundId,
+      durationMs: Date.now() - startedAt,
+      status: 'success',
+      result: reply,
+    });
+  }
+
+  private async recordScheduledFailure(
+    taskId: string,
+    inboundId: number,
+    startedAt: number,
+    error: unknown,
+  ): Promise<void> {
+    const task = await this.options.scheduledTasks.getById(taskId);
+    if (!task) return;
+
+    const message = error instanceof Error ? error.stack || error.message : String(error);
+    const nextRun = computeNextRun(task.scheduleType, task.scheduleValue);
+    await this.options.scheduledTasks.updateAfterRun(taskId, {
+      nextRun,
+      lastResult: `Error: ${message.slice(0, 200)}`,
+      status: nextRun == null ? 'completed' : undefined,
+    });
+    await this.options.scheduledTasks.logRun({
+      taskId,
+      inboundId,
+      durationMs: Date.now() - startedAt,
+      status: 'error',
+      error: message,
+    });
   }
 }

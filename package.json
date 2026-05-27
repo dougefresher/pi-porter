@@ -36,7 +36,8 @@
     "format": "biome check --write .",
     "check:silent-swallows": "bun run scripts/silent-swallow-metrics.ts --check",
     "check": "bun run typecheck && bun run lint && bun run check:silent-swallows",
-    "db:migrate": "bun run runtime/src/db/migrate.ts"
+    "db:migrate": "bun run runtime/src/db/migrate.ts",
+    "install:local": "bun build ./runtime/src/index.ts --compile --outfile $HOME/.local/bin/porter"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.75.5",

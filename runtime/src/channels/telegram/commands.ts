@@ -1,4 +1,4 @@
-import { parseSessionEntries } from '@earendil-works/pi-coding-agent';
+import { archiveAndClearPiSession } from '../../agent/archive-pi-session.js';
 import { currentSessionFileForKey } from '../../agent/session-paths.js';
 import type { PostgresBus } from '../../bus/postgres-bus.js';
 import { SessionArchiveStore } from '../../db/session-archive-store.js';
@@ -51,28 +51,12 @@ export async function handleTelegramCommand(ctx: TelegramCommandContext): Promis
     const sessionFile = currentSessionFileForKey(ctx.sessionRoot, ctx.sessionKey);
 
     try {
-      let archived = false;
-      const file = Bun.file(sessionFile);
-      if (await file.exists()) {
-        const content = await file.text();
-        const trimmed = content.trim();
-        if (trimmed) {
-          const entries = parseSessionEntries(content);
-          const header = entries.find((entry) => entry.type === 'session');
-          const piSessionId =
-            header && 'id' in header && typeof header.id === 'string' && header.id.trim() ? header.id : null;
-
-          await ctx.sessionArchiveStore.archive({
-            sessionKey: ctx.sessionKey,
-            reason: 'clear',
-            piSessionId,
-            lineCount: content.split('\n').filter((line) => line.trim().length > 0).length,
-            content,
-          });
-          archived = true;
-        }
-        await Bun.file(sessionFile).delete();
-      }
+      const archived = await archiveAndClearPiSession({
+        sessionArchiveStore: ctx.sessionArchiveStore,
+        sessionRoot: ctx.sessionRoot,
+        sessionKey: ctx.sessionKey,
+        reason: 'clear',
+      });
 
       await ctx.bus.publishOutbound({
         sessionKey: ctx.sessionKey,
