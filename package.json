@@ -35,7 +35,8 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "check:silent-swallows": "bun run scripts/silent-swallow-metrics.ts --check",
-    "check": "bun run typecheck && bun run lint && bun run check:silent-swallows",
+    "test": "bun test runtime/src",
+    "check": "bun run typecheck && bun run lint && bun run check:silent-swallows && bun run test",
     "db:migrate": "bun run runtime/src/db/migrate.ts",
     "install:local": "bun build ./runtime/src/index.ts --compile --outfile $HOME/.local/bin/porter"
   },

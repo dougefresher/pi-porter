@@ -102,6 +102,15 @@ Channel-local target addresses, such as `telegram:-100123:topic:42`, stay in del
 
 See [./docs/bun-cron.md](./docs/bun-cron.md) for Bun's cron API
 
+### Bun Markdown & HTML
+
+For channel rich text (Matrix outbound HTML, inbound `formatted_body` → plaintext), prefer Bun built-ins over markdown-it or similar:
+
+- [Bun Markdown](https://bun.com/docs/runtime/markdown.md) — `Bun.markdown.html()`, `Bun.markdown.render()`
+- [Bun HTMLRewriter](https://bun.com/docs/runtime/html-rewriter.md) — sanitize HTML and strip to plaintext
+
+Reference implementation: `runtime/src/channels/matrix/matrix-html.ts`. Bun marks the markdown API as unstable — keep calls behind that module.
+
 ## Core decisions
 
 - Runtime: Bun + TypeScript.
@@ -126,12 +135,13 @@ Local gate:
 bun run check
 ```
 
-That runs `typecheck`, `lint`, and `check:silent-swallows`. Narrower commands:
+That runs `typecheck`, `lint`, `check:silent-swallows`, and `test`. Narrower commands:
 
 ```bash
 bun run typecheck
 bun run lint
 bun run check:silent-swallows
+bun run test
 ```
 
 ## CI (Buildkite)

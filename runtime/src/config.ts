@@ -24,6 +24,15 @@ function readCsvEnvWithFallback(primary: string, secondary: string): string[] {
   return primaryValues.length > 0 ? primaryValues : readCsvEnv(secondary);
 }
 
+function readBoolEnv(name: string, fallback: boolean): boolean {
+  const raw = readEnv(name);
+  if (!raw) return fallback;
+  const value = raw.toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(value)) return true;
+  if (['0', 'false', 'no', 'off'].includes(value)) return false;
+  throw new Error(`Invalid boolean env value for ${name}: ${raw}`);
+}
+
 export type PorterConfig = {
   stateDir: string;
   configDir: string;
@@ -42,6 +51,9 @@ export type PorterConfig = {
     allowedSenders: string[];
     allowedRooms: string[];
     autoJoinInvites: boolean;
+    requireMention: boolean;
+    replyPrefix: string;
+    formatHtml: boolean;
   };
 };
 
@@ -62,6 +74,9 @@ export function loadConfig(): PorterConfig {
   const matrixAutoJoinInvites = ['1', 'true', 'yes', 'on'].includes(
     readEnv('PORTER_MATRIX_AUTO_JOIN_INVITES', readEnv('MATRIX_AUTO_JOIN_INVITES', '1')).toLowerCase(),
   );
+  const matrixRequireMention = readBoolEnv('PORTER_MATRIX_REQUIRE_MENTION', true);
+  const matrixReplyPrefix = process.env.PORTER_MATRIX_REPLY_PREFIX?.trim() ?? 'porter';
+  const matrixFormatHtml = readBoolEnv('PORTER_MATRIX_FORMAT_HTML', true);
 
   if (telegramEnabled && !botToken) throw new Error('Missing Telegram bot token: PORTER_TELEGRAM_BOT_TOKEN');
   if (telegramEnabled && allowedSenders.length === 0) {
@@ -95,6 +110,9 @@ export function loadConfig(): PorterConfig {
       allowedSenders: matrixAllowedSenders,
       allowedRooms: matrixAllowedRooms,
       autoJoinInvites: matrixAutoJoinInvites,
+      requireMention: matrixRequireMention,
+      replyPrefix: matrixReplyPrefix,
+      formatHtml: matrixFormatHtml,
     },
   };
 }
