@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 export function safeSessionDirName(sessionKey: string): string {
@@ -11,6 +12,18 @@ export function sessionDirForKey(sessionRoot: string, sessionKey: string): strin
   return join(sessionRoot, safeSessionDirName(sessionKey));
 }
 
-export function currentSessionFileForKey(sessionRoot: string, sessionKey: string): string {
-  return join(sessionDirForKey(sessionRoot, sessionKey), 'current.jsonl');
+/** Find the Pi session .jsonl file in a session directory, or null if none exists. */
+export function findSessionFileInDir(dir: string): string | null {
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+        return join(dir, entry.name);
+      }
+    }
+  } catch (error) {
+    // Directory doesn't exist yet — expected for sessions that haven't run.
+    console.warn('[session-paths] findSessionFileInDir readdir failed', { dir, error });
+  }
+  return null;
 }
