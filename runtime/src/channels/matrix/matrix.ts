@@ -238,7 +238,16 @@ export class MatrixChannel {
     });
 
     try {
+      console.log('[matrix] sendMessage', {
+        chatId,
+        roomId: target.roomId,
+        isDirect,
+        replyToEventId: sendOptions?.replyToEventId ?? null,
+        threadEventId: target.threadEventId ?? null,
+        textLength: text.length,
+      });
       await this.client.sendMessage(target.roomId, content);
+      console.log('[matrix] sendMessage done', { chatId, roomId: target.roomId });
     } catch (error) {
       logWarn('send failed', {
         operation: 'matrix.send_message',

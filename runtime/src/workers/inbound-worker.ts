@@ -2,6 +2,8 @@ import { archiveAndClearPiSession } from '../agent/archive-pi-session.js';
 import type { AgentRunner } from '../agent/runner.js';
 import type { PostgresBus } from '../bus/postgres-bus.js';
 import type { InboundEvent } from '../bus/types.js';
+import { roomIdForInbound } from '../channels/room-id.js';
+import type { ChannelWorkdirStore } from '../db/channel-workdir-store.js';
 import type { ScheduledTaskStore } from '../db/scheduled-task-store.js';
 import type { SessionArchiveStore } from '../db/session-archive-store.js';
 import { SessionStore } from '../db/session-store.js';
@@ -15,6 +17,7 @@ export type InboundWorkerOptions = {
   sessionArchiveStore: SessionArchiveStore;
   scheduledTasks: ScheduledTaskStore;
   scheduler?: SchedulerRegistry;
+  workdirStore?: ChannelWorkdirStore;
 };
 
 function readWorkdir(metadata: Record<string, unknown>): string | undefined {
@@ -93,6 +96,16 @@ export class InboundWorker {
   }
 
   private async process(event: InboundEvent): Promise<void> {
+    console.log('[inbound-worker] process start', {
+      inboundId: event.id,
+      sessionKey: event.sessionKey,
+      channel: event.channel,
+      chatId: event.chatId,
+      senderId: event.senderId,
+      contentLength: event.content.length,
+      contentPreview: event.content.slice(0, 120),
+      scheduled: event.metadata.scheduled === true,
+    });
     while (!this.stopped && this.sessionLocks.has(event.sessionKey)) {
       await Bun.sleep(50);
     }
@@ -111,12 +124,39 @@ export class InboundWorker {
         payload: { metadata: event.metadata },
       });
 
+      console.log('[inbound-worker] running agent', {
+        inboundId: event.id,
+        sessionKey: event.sessionKey,
+        inputLength: event.content.length,
+      });
+
+      let workdir = readWorkdir(event.metadata);
+      if (!workdir && this.options.workdirStore) {
+        const roomId = roomIdForInbound(event);
+        const stored = await this.options.workdirStore.get(roomId);
+        if (stored) {
+          workdir = stored;
+          console.log('[inbound-worker] using stored workdir', {
+            inboundId: event.id,
+            roomId,
+            workdir: stored,
+          });
+        }
+      }
+
       const reply = await this.agent.run({
         sessionKey: event.sessionKey,
         inboundId: event.id,
         text: event.content,
         metadata: event.metadata,
-        cwd: readWorkdir(event.metadata),
+        cwd: workdir,
+      });
+      console.log('[inbound-worker] agent reply received', {
+        inboundId: event.id,
+        sessionKey: event.sessionKey,
+        replyLength: reply.length,
+        replyPreview: reply.slice(0, 120),
+        durationMs: Date.now() - startedAt,
       });
       await this.transcripts.append({
         sessionKey: event.sessionKey,
@@ -126,6 +166,11 @@ export class InboundWorker {
       });
 
       if (scheduled.isScheduled) {
+        console.log('[inbound-worker] routing scheduled reply', {
+          inboundId: event.id,
+          taskId: scheduled.taskId,
+          reportSessionKey: scheduled.reportSessionKey,
+        });
         await appendCronLog(this.options.stateDir, {
           taskId: scheduled.taskId ?? 'unknown',
           taskName: scheduled.taskName,
@@ -146,12 +191,21 @@ export class InboundWorker {
           });
         }
 
+        const outboundSessionKey = reportTarget ? scheduled.reportSessionKey! : event.sessionKey;
+        const outboundChannel = reportTarget?.channel ?? event.channel;
+        const outboundChatId = reportTarget?.chatId ?? event.chatId;
+        console.log('[inbound-worker] publishing scheduled outbound', {
+          inboundId: event.id,
+          outboundSessionKey,
+          outboundChannel,
+          outboundChatId,
+        });
         await this.bus.publishOutbound({
           inboundId: event.id,
-          sessionKey: reportTarget ? scheduled.reportSessionKey! : event.sessionKey,
-          channel: reportTarget?.channel ?? event.channel,
+          sessionKey: outboundSessionKey,
+          channel: outboundChannel,
           accountId: reportTarget?.accountId ?? event.accountId,
-          chatId: reportTarget?.chatId ?? event.chatId,
+          chatId: outboundChatId,
           content: reply,
           metadata: {
             inboundId: event.id,
@@ -167,6 +221,12 @@ export class InboundWorker {
 
         await this.archiveScheduledSession(event.sessionKey, scheduled.taskId);
       } else {
+        console.log('[inbound-worker] publishing direct reply outbound', {
+          inboundId: event.id,
+          sessionKey: event.sessionKey,
+          channel: event.channel,
+          chatId: event.chatId,
+        });
         await this.bus.publishOutbound({
           inboundId: event.id,
           sessionKey: event.sessionKey,
@@ -184,6 +244,11 @@ export class InboundWorker {
 
       await this.sessions.bumpMessageCount(event.sessionKey, 2);
       await this.bus.markInboundDone(event.id);
+      console.log('[inbound-worker] process done', {
+        inboundId: event.id,
+        sessionKey: event.sessionKey,
+        durationMs: Date.now() - startedAt,
+      });
     } catch (error) {
       try {
         if (scheduled.isScheduled) {

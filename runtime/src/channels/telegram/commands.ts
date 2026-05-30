@@ -1,8 +1,11 @@
 import { archiveAndClearPiSession } from '../../agent/archive-pi-session.js';
 import { sessionDirForKey } from '../../agent/session-paths.js';
 import type { PostgresBus } from '../../bus/postgres-bus.js';
+import type { ChannelWorkdirStore } from '../../db/channel-workdir-store.js';
 import { SessionArchiveStore } from '../../db/session-archive-store.js';
 import { parseSessionKey } from '../../routing/session-key.js';
+import { handleCwdCommand } from '../cwd-command.js';
+import { telegramRoomId } from '../room-id.js';
 import type { TelegramInboundMessage } from './telegram.js';
 
 export type TelegramCommandContext = {
@@ -14,6 +17,7 @@ export type TelegramCommandContext = {
   chatJid: string;
   content: string;
   message: TelegramInboundMessage;
+  workdirStore?: ChannelWorkdirStore;
 };
 
 function commandName(content: string): string | null {
@@ -27,6 +31,13 @@ function commandName(content: string): string | null {
 export async function handleTelegramCommand(ctx: TelegramCommandContext): Promise<boolean> {
   const name = commandName(ctx.content);
   if (!name) return false;
+
+  console.log('[telegram] command', {
+    command: name,
+    sessionKey: ctx.sessionKey,
+    chatJid: ctx.chatJid,
+    senderId: ctx.senderId,
+  });
 
   if (name === 'whoami') {
     await ctx.bus.publishOutbound({
@@ -101,11 +112,25 @@ export async function handleTelegramCommand(ctx: TelegramCommandContext): Promis
         '/whoami - show Telegram sender/chat/session IDs',
         '/status - show daemon/session status',
         '/clear - archive and reset current Pi context for this chat/topic',
+        '/cwd - show or set the agent working directory for this chat',
         '/help - show this help',
         '',
         'Non-command messages are sent to pi-coding-agent using the daemon WorkingDirectory as cwd.',
       ].join('\n'),
       metadata: { command: name },
+    });
+    return true;
+  }
+
+  if (name === 'cwd') {
+    await handleCwdCommand({
+      bus: ctx.bus,
+      workdirStore: ctx.workdirStore,
+      sessionKey: ctx.sessionKey,
+      channel: 'telegram',
+      chatId: ctx.chatJid,
+      content: ctx.content,
+      roomId: telegramRoomId(ctx.chatJid),
     });
     return true;
   }

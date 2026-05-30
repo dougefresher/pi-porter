@@ -49,6 +49,15 @@ export class PostgresBus {
   }
 
   async publishInbound(event: NewInboundEvent): Promise<number> {
+    console.log('[bus] publishInbound', {
+      sessionKey: event.sessionKey,
+      channel: event.channel,
+      accountId: event.accountId,
+      chatId: event.chatId,
+      senderId: event.senderId,
+      contentLength: event.content.length,
+      contentPreview: event.content.slice(0, 120),
+    });
     const rows = (await this.db`
       insert into inbound_events (
         session_key,
@@ -74,6 +83,11 @@ export class PostgresBus {
     const row = rows[0];
     if (!row) throw new Error('failed to publish inbound event');
     await this.db`select pg_notify('porter_inbound', ${String(row.id)})`;
+    console.log('[bus] publishInbound done', {
+      inboundId: row.id,
+      sessionKey: event.sessionKey,
+      channel: event.channel,
+    });
     return row.id;
   }
 
@@ -91,14 +105,26 @@ export class PostgresBus {
       returning *
     `) as Record<string, unknown>[];
     const row = rows[0];
+    if (row) {
+      console.log('[bus] claimInbound', {
+        inboundId: Number(row.id),
+        sessionKey: String(row.session_key),
+        channel: String(row.channel),
+      });
+    }
     return row ? mapInbound(row) : null;
   }
 
   async markInboundDone(id: number): Promise<void> {
+    console.log('[bus] markInboundDone', { inboundId: id });
     await this.db`update inbound_events set status = 'done', processed_at = now(), error = null where id = ${id}`;
   }
 
   async markInboundFailed(id: number, error: unknown): Promise<void> {
+    console.log('[bus] markInboundFailed', {
+      inboundId: id,
+      error: String(error instanceof Error ? error.message : error),
+    });
     await this.db`
       update inbound_events
       set status = 'failed', processed_at = now(), error = ${String(error instanceof Error ? error.stack || error.message : error)}
@@ -116,6 +142,13 @@ export class PostgresBus {
       return await this.publishInbound(event);
     }
 
+    console.log('[bus] publishMatrixInbound', {
+      sessionKey: event.sessionKey,
+      channel: event.channel,
+      eventId,
+      contentLength: event.content.length,
+      contentPreview: event.content.slice(0, 120),
+    });
     const rows = (await this.db`
       insert into inbound_events (
         session_key,
@@ -143,13 +176,27 @@ export class PostgresBus {
     `) as { id: number }[];
 
     const row = rows[0];
-    if (!row) return null;
+    if (!row) {
+      console.log('[bus] publishMatrixInbound deduped', { eventId, sessionKey: event.sessionKey });
+      return null;
+    }
 
     await this.db`select pg_notify('porter_inbound', ${String(row.id)})`;
+    console.log('[bus] publishMatrixInbound done', { inboundId: row.id, eventId });
     return row.id;
   }
 
   async publishOutbound(delivery: NewOutboundDelivery): Promise<number> {
+    const contentPreview = delivery.content ? delivery.content.slice(0, 120) : null;
+    console.log('[bus] publishOutbound', {
+      sessionKey: delivery.sessionKey,
+      channel: delivery.channel,
+      chatId: delivery.chatId,
+      type: delivery.type ?? 'message',
+      inboundId: delivery.inboundId ?? null,
+      contentLength: delivery.content?.length ?? 0,
+      contentPreview,
+    });
     const rows = (await this.db`
       insert into outbound_deliveries (
         inbound_id,
@@ -177,6 +224,11 @@ export class PostgresBus {
     const row = rows[0];
     if (!row) throw new Error('failed to publish outbound delivery');
     await this.db`select pg_notify('porter_outbound', ${String(row.id)})`;
+    console.log('[bus] publishOutbound done', {
+      outboundId: row.id,
+      channel: delivery.channel,
+      chatId: delivery.chatId,
+    });
     return row.id;
   }
 
@@ -194,14 +246,27 @@ export class PostgresBus {
       returning *
     `) as Record<string, unknown>[];
     const row = rows[0];
+    if (row) {
+      console.log('[bus] claimOutbound', {
+        outboundId: Number(row.id),
+        channel: String(row.channel),
+        chatId: String(row.chat_id),
+        type: String(row.type),
+      });
+    }
     return row ? mapOutbound(row) : null;
   }
 
   async markOutboundSent(id: number): Promise<void> {
+    console.log('[bus] markOutboundSent', { outboundId: id });
     await this.db`update outbound_deliveries set status = 'sent', sent_at = now(), error = null where id = ${id}`;
   }
 
   async markOutboundFailed(id: number, error: unknown): Promise<void> {
+    console.log('[bus] markOutboundFailed', {
+      outboundId: id,
+      error: String(error instanceof Error ? error.message : error),
+    });
     await this.db`
       update outbound_deliveries
       set status = 'failed', error = ${String(error instanceof Error ? error.stack || error.message : error)}

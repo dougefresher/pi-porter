@@ -1,8 +1,10 @@
 import { archiveAndClearPiSession } from '../../agent/archive-pi-session.js';
 import { sessionDirForKey } from '../../agent/session-paths.js';
 import type { PostgresBus } from '../../bus/postgres-bus.js';
+import type { ChannelWorkdirStore } from '../../db/channel-workdir-store.js';
 import { SessionArchiveStore } from '../../db/session-archive-store.js';
 import { parseSessionKey } from '../../routing/session-key.js';
+import { handleCwdCommand } from '../cwd-command.js';
 import type { MatrixInboundMessage } from './matrix.js';
 
 export type MatrixCommandContext = {
@@ -14,6 +16,7 @@ export type MatrixCommandContext = {
   chatId: string;
   content: string;
   message: MatrixInboundMessage;
+  workdirStore?: ChannelWorkdirStore;
 };
 
 function commandName(content: string): string | null {
@@ -31,6 +34,13 @@ export function isMatrixSlashCommand(content: string): boolean {
 export async function handleMatrixCommand(ctx: MatrixCommandContext): Promise<boolean> {
   const name = commandName(ctx.content);
   if (!name) return false;
+
+  console.log('[matrix] command', {
+    command: name,
+    sessionKey: ctx.sessionKey,
+    chatId: ctx.chatId,
+    senderId: ctx.senderId,
+  });
 
   const parsed = parseSessionKey(ctx.sessionKey);
 
@@ -108,9 +118,23 @@ export async function handleMatrixCommand(ctx: MatrixCommandContext): Promise<bo
         '/whoami - show Matrix sender/room/session IDs',
         '/status - show daemon/session status',
         '/clear - archive and reset current Pi context for this room',
+        '/cwd - show or set the agent working directory for this room',
         '/help - show this help',
       ].join('\n'),
       metadata: { command: name },
+    });
+    return true;
+  }
+
+  if (name === 'cwd') {
+    await handleCwdCommand({
+      bus: ctx.bus,
+      workdirStore: ctx.workdirStore,
+      sessionKey: ctx.sessionKey,
+      channel: 'matrix',
+      chatId: ctx.chatId,
+      content: ctx.content,
+      roomId: ctx.message.roomId,
     });
     return true;
   }

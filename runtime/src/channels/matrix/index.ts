@@ -1,5 +1,6 @@
 import type { PostgresBus } from '../../bus/postgres-bus.js';
 import type { OutboundDelivery } from '../../bus/types.js';
+import type { ChannelWorkdirStore } from '../../db/channel-workdir-store.js';
 import { SessionArchiveStore } from '../../db/session-archive-store.js';
 import { SessionStore } from '../../db/session-store.js';
 import { parseSessionKey } from '../../routing/session-key.js';
@@ -24,6 +25,7 @@ export type MatrixRuntimeOptions = {
   requireMention: boolean;
   replyPrefix: string;
   formatHtml: boolean;
+  workdirStore?: ChannelWorkdirStore;
 };
 
 export class MatrixRuntime implements ChannelRuntime {
@@ -34,6 +36,7 @@ export class MatrixRuntime implements ChannelRuntime {
   private sessionArchiveStore: SessionArchiveStore;
   private sessionRoot: string;
   private requireMention: boolean;
+  private workdirStore: ChannelWorkdirStore | undefined;
   private channel: MatrixChannel;
 
   constructor(options: MatrixRuntimeOptions) {
@@ -43,6 +46,7 @@ export class MatrixRuntime implements ChannelRuntime {
     this.sessionArchiveStore = options.sessionArchiveStore;
     this.sessionRoot = options.sessionRoot;
     this.requireMention = options.requireMention;
+    this.workdirStore = options.workdirStore;
     this.channel = new MatrixChannel({
       homeserverUrl: options.homeserverUrl,
       accessToken: options.accessToken,
@@ -52,6 +56,18 @@ export class MatrixRuntime implements ChannelRuntime {
       autoJoinInvites: options.autoJoinInvites,
       onMessage: async (message) => {
         if (message.isFromMe) return;
+
+        console.log('[matrix] inbound message', {
+          chatId: message.chatId,
+          roomId: message.roomId,
+          senderId: message.senderId,
+          eventId: message.eventId,
+          isDirect: message.isDirect,
+          threadEventId: message.threadEventId ?? null,
+          replyToEventId: message.replyToEventId ?? null,
+          contentLength: message.content.length,
+          contentPreview: message.content.slice(0, 120),
+        });
 
         const senderAccess = this.access.checkSender(message.senderId ?? '');
         if (!senderAccess.allowed) {
@@ -90,6 +106,7 @@ export class MatrixRuntime implements ChannelRuntime {
           chatId: message.chatId,
           content: message.content,
           message,
+          workdirStore: this.workdirStore,
         });
         if (handled) return;
 
@@ -105,6 +122,15 @@ export class MatrixRuntime implements ChannelRuntime {
             botUserId,
           })
         ) {
+          console.log('[matrix] message skipped (mention required)', {
+            contentPreview: message.content.slice(0, 20),
+            roomId: message.roomId,
+            senderId: message.senderId,
+            eventId: message.eventId,
+            threadEventId: message.threadEventId,
+            replyToEventId: message.replyToEventId,
+            isDirect: message.isDirect,
+          });
           return;
         }
 
@@ -129,7 +155,19 @@ export class MatrixRuntime implements ChannelRuntime {
             isDirect: message.isDirect,
           },
         });
-        if (inboundId == null) return;
+        if (inboundId == null) {
+          console.log('[matrix] inbound deduped (skipped)', {
+            sessionKey,
+            eventId: message.eventId,
+          });
+          return;
+        }
+        console.log('[matrix] inbound published', {
+          inboundId,
+          sessionKey,
+          roomId: message.roomId,
+          eventId: message.eventId,
+        });
       },
     });
   }
@@ -144,14 +182,21 @@ export class MatrixRuntime implements ChannelRuntime {
 
   async send(delivery: OutboundDelivery): Promise<void> {
     if (delivery.type === 'typing_on') {
+      console.log('[matrix] send typing_on', { chatId: delivery.chatId });
       await this.channel.setTyping(delivery.chatId, true);
       return;
     }
     if (delivery.type === 'typing_off') return;
     if (!delivery.content) return;
-
     const replyToEventId =
       typeof delivery.metadata.replyToEventId === 'string' ? delivery.metadata.replyToEventId : undefined;
+    console.log('[matrix] send message', {
+      chatId: delivery.chatId,
+      outboundId: delivery.id,
+      replyToEventId: replyToEventId ?? null,
+      contentLength: delivery.content.length,
+      contentPreview: delivery.content.slice(0, 120),
+    });
     await this.channel.sendMessage(delivery.chatId, delivery.content, { replyToEventId });
   }
 }

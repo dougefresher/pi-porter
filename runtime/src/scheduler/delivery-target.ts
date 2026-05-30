@@ -10,20 +10,25 @@ export type OutboundDeliveryTarget = {
 
 export function resolveOutboundFromSessionKey(sessionKey: string): OutboundDeliveryTarget | null {
   const parsed = parseSessionKey(sessionKey);
-  if (!parsed) return null;
+  if (!parsed) {
+    console.log('[scheduler] resolveOutboundFromSessionKey: null (parse failed)', { sessionKey });
+    return null;
+  }
 
   if (parsed.source === 'telegram') {
     const threadId = parsed.threadId ? Number.parseInt(parsed.threadId, 10) : null;
-    return {
+    const result: OutboundDeliveryTarget = {
       channel: 'telegram',
       accountId: parsed.accountId,
       chatId: buildTelegramChatJid(parsed.peerId, threadId != null && Number.isFinite(threadId) ? threadId : null),
     };
+    console.log('[scheduler] resolveOutboundFromSessionKey: telegram', { sessionKey, result });
+    return result;
   }
 
   if (parsed.source === 'matrix') {
     const roomId = decodeMatrixPeerId(parsed.peerId);
-    return {
+    const result: OutboundDeliveryTarget = {
       channel: 'matrix',
       accountId: parsed.accountId,
       chatId: buildMatrixChatId(roomId, {
@@ -31,7 +36,13 @@ export function resolveOutboundFromSessionKey(sessionKey: string): OutboundDeliv
         isDirect: parsed.peerKind === 'dm',
       }),
     };
+    console.log('[scheduler] resolveOutboundFromSessionKey: matrix', { sessionKey, result });
+    return result;
   }
 
+  console.log('[scheduler] resolveOutboundFromSessionKey: null (unsupported source)', {
+    sessionKey,
+    source: parsed.source,
+  });
   return null;
 }

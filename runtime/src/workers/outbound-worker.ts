@@ -36,9 +36,22 @@ export class OutboundWorker {
         }
 
         try {
+          console.log('[outbound-worker] sending delivery', {
+            outboundId: delivery.id,
+            channel: delivery.channel,
+            chatId: delivery.chatId,
+            type: delivery.type,
+            contentLength: delivery.content?.length ?? 0,
+            contentPreview: delivery.content?.slice(0, 120) ?? null,
+          });
           await this.channels.send(delivery);
           await this.bus.markOutboundSent(delivery.id);
+          console.log('[outbound-worker] delivery sent', { outboundId: delivery.id });
         } catch (error) {
+          console.log('[outbound-worker] delivery failed', {
+            outboundId: delivery.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
           await this.bus.markOutboundFailed(delivery.id, error);
         }
       } catch (error) {

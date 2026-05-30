@@ -140,3 +140,8 @@ create table if not exists scheduled_task_runs (
 );
 
 create index if not exists scheduled_task_runs_task_idx on scheduled_task_runs (task_id, id);
+
+create table if not exists channel_workdirs (
+  room_id text primary key,
+  path text not null
+);
