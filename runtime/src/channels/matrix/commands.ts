@@ -1,5 +1,5 @@
 import { archiveAndClearPiSession } from '../../agent/archive-pi-session.js';
-import { currentSessionFileForKey } from '../../agent/session-paths.js';
+import { sessionDirForKey } from '../../agent/session-paths.js';
 import type { PostgresBus } from '../../bus/postgres-bus.js';
 import { SessionArchiveStore } from '../../db/session-archive-store.js';
 import { parseSessionKey } from '../../routing/session-key.js';
@@ -55,7 +55,7 @@ export async function handleMatrixCommand(ctx: MatrixCommandContext): Promise<bo
   }
 
   if (name === 'clear') {
-    const sessionFile = currentSessionFileForKey(ctx.sessionRoot, ctx.sessionKey);
+    const sessionDir = sessionDirForKey(ctx.sessionRoot, ctx.sessionKey);
 
     try {
       const archived = await archiveAndClearPiSession({
@@ -79,7 +79,7 @@ export async function handleMatrixCommand(ctx: MatrixCommandContext): Promise<bo
       console.error('[matrix] /clear failed', {
         operation: 'matrix.command.clear.failed',
         sessionKey: ctx.sessionKey,
-        sessionFile,
+        sessionDir,
         error,
       });
 

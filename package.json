@@ -41,9 +41,9 @@
     "install:local": "bun build ./runtime/src/index.ts --compile --outfile $HOME/.local/bin/porter"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.75.5",
-    "@earendil-works/pi-ai": "0.75.5",
-    "@earendil-works/pi-coding-agent": "0.75.5",
+    "@earendil-works/pi-agent-core": "0.78.0",
+    "@earendil-works/pi-ai": "0.78.0",
+    "@earendil-works/pi-coding-agent": "0.78.0",
     "grammy": "1.38.0",
     "matrix-js-sdk": "41.6.0"
   },

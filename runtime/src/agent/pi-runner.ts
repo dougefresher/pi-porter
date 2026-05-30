@@ -4,7 +4,7 @@ import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-ag
 import type { PorterConfig } from '../config.js';
 import { assistantErrorText } from './agent-error-text.js';
 import type { AgentRunInput, AgentRunner } from './runner.js';
-import { currentSessionFileForKey, sessionDirForKey } from './session-paths.js';
+import { sessionDirForKey } from './session-paths.js';
 
 function collectTextDelta(event: unknown): string {
   const e = event as { type?: string; assistantMessageEvent?: { type?: string; delta?: unknown } };
@@ -40,17 +40,19 @@ export class PiAgentRunner implements AgentRunner {
   async run(input: AgentRunInput): Promise<string> {
     const sessionDir = sessionDirForKey(this.sessionRoot, input.sessionKey);
     await mkdir(sessionDir, { recursive: true });
-    const sessionFile = currentSessionFileForKey(this.sessionRoot, input.sessionKey);
 
     const cwd = input.cwd ?? this.cwd;
     const { session, modelFallbackMessage } = await createAgentSession({
       cwd,
-      sessionManager: SessionManager.open(sessionFile, sessionDir, cwd),
+      sessionManager: SessionManager.create(cwd, sessionDir),
       sessionStartEvent: {
         type: 'session_start',
         reason: 'resume',
       },
     });
+
+    // Set display name so session listings, archiving, and debugging use the porter identity.
+    session.setSessionName(input.sessionKey);
 
     const chunks: string[] = [];
     const unsubscribe = session.subscribe((event) => {
