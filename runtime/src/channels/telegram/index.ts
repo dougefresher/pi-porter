@@ -66,11 +66,8 @@ export class TelegramRuntime implements ChannelRuntime {
         console.log('[telegram] inbound message', {
           sessionKey,
           chatJid: message.chatJid,
-          senderId: message.senderId,
-          senderUsername: message.senderUsername,
           messageId: message.messageId,
           contentLength: message.content.length,
-          contentPreview: message.content.slice(0, 120),
         });
 
         const handled = await handleTelegramCommand({
@@ -127,7 +124,6 @@ export class TelegramRuntime implements ChannelRuntime {
       chatId: delivery.chatId,
       outboundId: delivery.id,
       contentLength: delivery.content.length,
-      contentPreview: delivery.content.slice(0, 120),
     });
     await this.channel.sendMessage(delivery.chatId, delivery.content);
   }

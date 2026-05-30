@@ -107,7 +107,7 @@ If you already have an admin account on the server, join the admin room
 ```
 
 Tuwunel generates a random password and prints it. Log in once with that
-password to get a token (see [Getting an access token](#getting-an-access-token)).
+password to get a token (see [Getting an access token](#step-3-getting-an-access-token)).
 
 #### Step 3: Getting an access token
 
@@ -323,8 +323,11 @@ Messages that start with a `/` are checked against built-in slash commands
 before entering the agent queue. Currently supported:
 
 - `/help` -- show available commands.
-- `/archive` -- archive the current session (stops agent, saves transcript,
-  starts fresh).
+- `/clear` -- archive and reset the current Pi context for this room.
+- `/cwd` -- show current working directory for this room.
+- `/cwd <path>` -- set the working directory (absolute, or relative to the daemon cwd).
+- `/cwd --reset` -- clear the working directory override, back to the daemon default.
+- `/whoami` -- show Matrix sender/room/session IDs.
 - `/status` -- show current session status.
 
 Commands are handled in `runtime/src/channels/matrix/commands.ts`. They bypass

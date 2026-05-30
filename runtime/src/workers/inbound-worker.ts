@@ -101,9 +101,7 @@ export class InboundWorker {
       sessionKey: event.sessionKey,
       channel: event.channel,
       chatId: event.chatId,
-      senderId: event.senderId,
       contentLength: event.content.length,
-      contentPreview: event.content.slice(0, 120),
       scheduled: event.metadata.scheduled === true,
     });
     while (!this.stopped && this.sessionLocks.has(event.sessionKey)) {
@@ -139,7 +137,6 @@ export class InboundWorker {
           console.log('[inbound-worker] using stored workdir', {
             inboundId: event.id,
             roomId,
-            workdir: stored,
           });
         }
       }
@@ -155,7 +152,6 @@ export class InboundWorker {
         inboundId: event.id,
         sessionKey: event.sessionKey,
         replyLength: reply.length,
-        replyPreview: reply.slice(0, 120),
         durationMs: Date.now() - startedAt,
       });
       await this.transcripts.append({

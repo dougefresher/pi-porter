@@ -45,9 +45,8 @@ export class PiAgentRunner implements AgentRunner {
       sessionKey: input.sessionKey,
       inboundId: input.inboundId,
       inputLength: input.text.length,
-      inputPreview: input.text.slice(0, 120),
-      cwd: input.cwd ?? this.cwd,
-      sessionDir,
+      hasInput: input.text.length > 0,
+      cwdProvided: Boolean(input.cwd),
     });
 
     const cwd = input.cwd ?? this.cwd;
@@ -88,7 +87,7 @@ export class PiAgentRunner implements AgentRunner {
         sessionKey: input.sessionKey,
         inboundId: input.inboundId,
         replyLength: result.length,
-        replyPreview: result.slice(0, 120),
+        hasReply: result.length > 0,
         hasError: !!errorText,
       });
       return result;

@@ -35,8 +35,9 @@ export async function handleCwdCommand(params: CwdCommandParams): Promise<void> 
     return;
   }
 
-  const args = content.trim().split(/\s+/).slice(1);
-  const arg = args.join(' ').trim();
+  const trimmed = content.trim();
+  const firstSpace = trimmed.search(/\s/);
+  const arg = firstSpace === -1 ? '' : trimmed.slice(firstSpace + 1).trim();
 
   if (!arg) {
     // show current

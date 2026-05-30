@@ -66,7 +66,6 @@ export class MatrixRuntime implements ChannelRuntime {
           threadEventId: message.threadEventId ?? null,
           replyToEventId: message.replyToEventId ?? null,
           contentLength: message.content.length,
-          contentPreview: message.content.slice(0, 120),
         });
 
         const senderAccess = this.access.checkSender(message.senderId ?? '');
@@ -123,7 +122,6 @@ export class MatrixRuntime implements ChannelRuntime {
           })
         ) {
           console.log('[matrix] message skipped (mention required)', {
-            contentPreview: message.content.slice(0, 20),
             roomId: message.roomId,
             senderId: message.senderId,
             eventId: message.eventId,
@@ -195,7 +193,6 @@ export class MatrixRuntime implements ChannelRuntime {
       outboundId: delivery.id,
       replyToEventId: replyToEventId ?? null,
       contentLength: delivery.content.length,
-      contentPreview: delivery.content.slice(0, 120),
     });
     await this.channel.sendMessage(delivery.chatId, delivery.content, { replyToEventId });
   }

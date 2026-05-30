@@ -42,7 +42,6 @@ export class OutboundWorker {
             chatId: delivery.chatId,
             type: delivery.type,
             contentLength: delivery.content?.length ?? 0,
-            contentPreview: delivery.content?.slice(0, 120) ?? null,
           });
           await this.channels.send(delivery);
           await this.bus.markOutboundSent(delivery.id);

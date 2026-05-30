@@ -54,9 +54,7 @@ export class PostgresBus {
       channel: event.channel,
       accountId: event.accountId,
       chatId: event.chatId,
-      senderId: event.senderId,
       contentLength: event.content.length,
-      contentPreview: event.content.slice(0, 120),
     });
     const rows = (await this.db`
       insert into inbound_events (
@@ -147,7 +145,6 @@ export class PostgresBus {
       channel: event.channel,
       eventId,
       contentLength: event.content.length,
-      contentPreview: event.content.slice(0, 120),
     });
     const rows = (await this.db`
       insert into inbound_events (
@@ -187,7 +184,6 @@ export class PostgresBus {
   }
 
   async publishOutbound(delivery: NewOutboundDelivery): Promise<number> {
-    const contentPreview = delivery.content ? delivery.content.slice(0, 120) : null;
     console.log('[bus] publishOutbound', {
       sessionKey: delivery.sessionKey,
       channel: delivery.channel,
@@ -195,7 +191,6 @@ export class PostgresBus {
       type: delivery.type ?? 'message',
       inboundId: delivery.inboundId ?? null,
       contentLength: delivery.content?.length ?? 0,
-      contentPreview,
     });
     const rows = (await this.db`
       insert into outbound_deliveries (
