@@ -1,4 +1,3 @@
-import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 export function safeSessionDirName(sessionKey: string): string {
@@ -12,18 +11,33 @@ export function sessionDirForKey(sessionRoot: string, sessionKey: string): strin
   return join(sessionRoot, safeSessionDirName(sessionKey));
 }
 
-/** Find the Pi session .jsonl file in a session directory, or null if none exists. */
+/**
+ * Find the most recent Pi session .jsonl file in a session directory.
+ *
+ * Matches Pi's own continueRecent ordering: most recently modified first.
+ * This avoids picking a stale leftover from a crash/restart when multiple
+ * .jsonl files happen to exist in the same directory.
+ *
+ * Returns the absolute path, or null if no .jsonl files exist.
+ */
 export function findSessionFileInDir(dir: string): string | null {
   try {
-    const entries = readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-        return join(dir, entry.name);
+    const glob = new Bun.Glob('*.jsonl');
+    const candidates: Array<{ path: string; mtime: number }> = [];
+    for (const name of glob.scanSync({ cwd: dir, onlyFiles: true })) {
+      try {
+        candidates.push({ path: join(dir, name), mtime: Bun.file(join(dir, name)).lastModified });
+      } catch (error) {
+        // ENOENT — race with another process deleting the file. Skip this candidate.
+        console.warn('[session-paths] findSessionFileInDir stat failed, skipping', { path: join(dir, name), error });
       }
     }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    return candidates[0]!.path;
   } catch (error) {
     // Directory doesn't exist yet — expected for sessions that haven't run.
-    console.warn('[session-paths] findSessionFileInDir readdir failed', { dir, error });
+    console.warn('[session-paths] findSessionFileInDir failed', { dir, error });
+    return null;
   }
-  return null;
 }
