@@ -4,6 +4,7 @@ import { ChannelManager } from './channels/manager.js';
 import { MatrixRuntime } from './channels/matrix/index.js';
 import { TelegramRuntime } from './channels/telegram/index.js';
 import { ensureRuntimeDirs, type PorterConfig } from './config.js';
+import { ChannelWorkdirStore } from './db/channel-workdir-store.js';
 import { closeDb, type Db, getDb } from './db/client.js';
 import { migrate } from './db/migrate.js';
 import { ScheduledTaskStore } from './db/scheduled-task-store.js';
@@ -38,6 +39,7 @@ export class PorterDaemon {
     const sessionArchives = new SessionArchiveStore(db);
     const transcripts = new TranscriptStore(db);
     const scheduledTasks = new ScheduledTaskStore(db);
+    const workdirs = new ChannelWorkdirStore(db);
     const channels = new ChannelManager();
     this.channels = channels;
 
@@ -55,6 +57,7 @@ export class PorterDaemon {
           botToken: this.config.telegram.botToken,
           pollingTimeoutSeconds: this.config.telegram.pollingTimeoutSeconds,
           allowedSenders: this.config.telegram.allowedSenders,
+          workdirStore: workdirs,
         }),
       );
     }
@@ -75,6 +78,7 @@ export class PorterDaemon {
           requireMention: this.config.matrix.requireMention,
           replyPrefix: this.config.matrix.replyPrefix,
           formatHtml: this.config.matrix.formatHtml,
+          workdirStore: workdirs,
         }),
       );
     }
@@ -92,6 +96,7 @@ export class PorterDaemon {
       sessionArchiveStore: sessionArchives,
       scheduledTasks,
       scheduler,
+      workdirStore: workdirs,
     });
     this.outboundWorker = new OutboundWorker(bus, channels);
 

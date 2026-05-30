@@ -54,6 +54,7 @@ export class SchedulerRegistry {
   }
 
   async notifyTaskComplete(taskId: string): Promise<void> {
+    console.log('[scheduler] task complete notification', { taskId });
     const task = await this.store.getById(taskId);
     if (!task) return;
     if (task.scheduleType === 'cron') return;
@@ -62,6 +63,13 @@ export class SchedulerRegistry {
 
   private register(task: ScheduledTask): void {
     this.disarm(task.id);
+    console.log('[scheduler] registering task', {
+      taskId: task.id,
+      name: task.name,
+      scheduleType: task.scheduleType,
+      scheduleValue: task.scheduleValue,
+      nextRun: task.nextRun,
+    });
 
     if (task.scheduleType === 'cron') {
       try {
@@ -106,6 +114,7 @@ export class SchedulerRegistry {
 
   private disarm(taskId: string, handle = this.handles.get(taskId)): void {
     if (!handle) return;
+    console.log('[scheduler] disarming task', { taskId });
     if (handle.kind === 'cron') {
       handle.stop();
     } else {

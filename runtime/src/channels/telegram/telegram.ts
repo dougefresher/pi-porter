@@ -112,9 +112,16 @@ export class TelegramChannel {
     try {
       const target = parseTelegramTarget(jid);
       const messageText = `${this.opts.assistantName}: ${text}`;
+      console.log('[telegram] sendMessage', {
+        jid,
+        chatId: target.chatId,
+        messageThreadId: target.messageThreadId ?? null,
+        textLength: text.length,
+      });
       await this.api.sendMessage(target.chatId, messageText, {
         ...(typeof target.messageThreadId === 'number' ? { message_thread_id: target.messageThreadId } : {}),
       });
+      console.log('[telegram] sendMessage done', { jid, chatId: target.chatId });
     } catch (error) {
       logWarn('send failed', {
         operation: 'telegram.send_message',

@@ -23,6 +23,13 @@ export class ChannelManager {
   async send(delivery: OutboundDelivery): Promise<void> {
     const channel = this.channels.get(delivery.channel);
     if (!channel) throw new Error(`No channel registered for ${delivery.channel}`);
+    console.log('[channel-manager] send', {
+      channel: delivery.channel,
+      outboundId: delivery.id,
+      chatId: delivery.chatId,
+      type: delivery.type,
+      contentLength: delivery.content?.length ?? 0,
+    });
     await channel.send(delivery);
   }
 }

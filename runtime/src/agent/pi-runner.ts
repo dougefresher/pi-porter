@@ -41,6 +41,14 @@ export class PiAgentRunner implements AgentRunner {
     const sessionDir = sessionDirForKey(this.sessionRoot, input.sessionKey);
     await mkdir(sessionDir, { recursive: true });
 
+    console.log('[agent] run start', {
+      sessionKey: input.sessionKey,
+      inboundId: input.inboundId,
+      inputLength: input.text.length,
+      hasInput: input.text.length > 0,
+      cwdProvided: Boolean(input.cwd),
+    });
+
     const cwd = input.cwd ?? this.cwd;
     const { session, modelFallbackMessage } = await createAgentSession({
       cwd,
@@ -74,8 +82,15 @@ export class PiAgentRunner implements AgentRunner {
       }
       const streamed = chunks.join('').trim();
       const errorText = assistantErrorText(session.state.messages);
-      if (errorText) return errorText;
-      return streamed || finalAssistantText(session) || '(no response)';
+      const result = errorText || streamed || finalAssistantText(session) || '(no response)';
+      console.log('[agent] run done', {
+        sessionKey: input.sessionKey,
+        inboundId: input.inboundId,
+        replyLength: result.length,
+        hasReply: result.length > 0,
+        hasError: !!errorText,
+      });
+      return result;
     } finally {
       unsubscribe();
       session.dispose();
