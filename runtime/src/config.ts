@@ -35,7 +35,10 @@ function readBoolEnv(name: string, fallback: boolean): boolean {
   throw new Error(`Invalid boolean env value for ${name}: ${raw}`);
 }
 
-function readMatrixThreadRepliesEnv(name: string, fallback: 'off' | 'inbound' | 'always'): 'off' | 'inbound' | 'always' {
+function readMatrixThreadRepliesEnv(
+  name: string,
+  fallback: 'off' | 'inbound' | 'always',
+): 'off' | 'inbound' | 'always' {
   const raw = readEnv(name);
   if (!raw) return fallback;
   const value = raw.toLowerCase();

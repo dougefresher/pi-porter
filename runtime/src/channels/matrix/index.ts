@@ -8,9 +8,9 @@ import type { ChannelRuntime } from '../types.js';
 import { MatrixAccessControl } from './access.js';
 import { handleMatrixCommand, isMatrixSlashCommand } from './commands.js';
 import { MatrixChannel } from './matrix.js';
+import { parseMatrixTarget } from './matrix-targets.js';
 import { isMatrixMentioned, stripMatrixMentionPrefix } from './mentions.js';
 import { buildMatrixSessionKey } from './session.js';
-import { parseMatrixTarget } from './matrix-targets.js';
 import type { MatrixThreadReplies } from './threads.js';
 
 export type MatrixRuntimeOptions = {
@@ -145,7 +145,14 @@ export class MatrixRuntime implements ChannelRuntime {
         }
 
         if (this.ackReaction && message.eventId) {
-          void this.channel.reactToMessage(message.roomId, message.eventId, this.ackReaction);
+          this.channel.reactToMessage(message.roomId, message.eventId, this.ackReaction).catch((error) => {
+            console.warn('[matrix] ack reaction dispatch failed', {
+              operation: 'matrix.ack_reaction.dispatch',
+              roomId: message.roomId,
+              eventId: message.eventId,
+              err: error,
+            });
+          });
         }
 
         const inboundId = await this.bus.publishMatrixInbound({

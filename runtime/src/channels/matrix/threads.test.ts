@@ -1,12 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { buildSessionKey, parseSessionKey } from '../../routing/session-key.js';
-import {
-  buildMatrixChatId,
-  decodeMatrixThreadId,
-  encodeMatrixThreadId,
-  parseMatrixTarget,
-} from './matrix-targets.js';
+import { buildMatrixChatId, decodeMatrixThreadId, encodeMatrixThreadId, parseMatrixTarget } from './matrix-targets.js';
 import { buildMatrixSessionKey } from './session.js';
 import { parseMatrixThreadReplies, resolveMatrixThreadRouting } from './threads.js';
 
@@ -93,7 +88,9 @@ describe('matrix thread id encoding', () => {
     const chatId = buildMatrixChatId(roomId, { threadEventId: eventId });
     const sessionKey = buildMatrixSessionKey(chatId);
 
-    expect(encodeMatrixThreadId(eventId)).toBe('243761564c44796c714c3556717045792d7133696a78785f5046626730306f2d637863553279304676737a77');
+    expect(encodeMatrixThreadId(eventId)).toBe(
+      '243761564c44796c714c3556717045792d7133696a78785f5046626730306f2d637863553279304676737a77',
+    );
     expect(decodeMatrixThreadId(encodeMatrixThreadId(eventId))).toBe(eventId);
 
     const parsed = parseSessionKey(sessionKey);

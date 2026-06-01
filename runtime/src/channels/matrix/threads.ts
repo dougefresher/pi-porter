@@ -2,7 +2,10 @@ export type MatrixThreadReplies = 'off' | 'inbound' | 'always';
 
 // Thread routing modes and lazy thread creation: ./docs/matrix.md#threads
 
-export function parseMatrixThreadReplies(value: string | undefined, fallback: MatrixThreadReplies): MatrixThreadReplies {
+export function parseMatrixThreadReplies(
+  value: string | undefined,
+  fallback: MatrixThreadReplies,
+): MatrixThreadReplies {
   const normalized = (value ?? '').trim().toLowerCase();
   if (!normalized) return fallback;
   if (normalized === 'off' || normalized === 'inbound' || normalized === 'always') {

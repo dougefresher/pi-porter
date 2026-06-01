@@ -12,8 +12,8 @@ import {
 
 import { DirectRoomTracker } from './direct-rooms.js';
 import { buildMatrixMessageContent, readMatrixMessagePlainText } from './matrix-html.js';
-import { buildMatrixReactionContent } from './reactions.js';
 import { buildMatrixChatId, parseMatrixTarget } from './matrix-targets.js';
+import { buildMatrixReactionContent } from './reactions.js';
 import { buildReplyAwareContent, readFormattedBody, readMatrixMentions } from './reply-context.js';
 import { type MatrixThreadReplies, resolveMatrixThreadRouting } from './threads.js';
 
