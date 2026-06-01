@@ -127,6 +127,32 @@ Reference implementation: `runtime/src/channels/matrix/matrix-html.ts`. Bun mark
 - Security: private VPN/systemd containment is assumed initially; do not overbuild product auth yet.
 - Telegram must enforce an explicit sender allowlist before messages enter the durable bus. Use `PORTER_TELEGRAM_ALLOWED_SENDERS`.
 
+## Performance & allocations
+
+Porter is a long-running daemon. Optimize for steady-state cost, not startup.
+
+**Hot paths** (treat allocations as expensive):
+
+- Channel inbound handlers (Matrix/Telegram sync events)
+- Bus publish/consume loops
+- Outbound delivery and session-key routing on every message
+
+**Cold paths** (clarity first):
+
+- Config/env parsing at startup
+- Migrations, doctor, one-off CLI
+
+Guidelines:
+
+- Early-return before normalizing strings (`trim`, `toLowerCase`, `split`, regex).
+- Avoid intermediate strings/objects when the value is unused (e.g. don't build `chatId` before access checks fail).
+- Prefer parsing once and passing through; don't re-encode/decode the same ID in the same request path.
+- No extra copies: spread/rest, `[...arr]`, `.map` chains, template strings in tight loops — only when needed.
+- Logging: avoid building large objects/strings unless the log level would emit them.
+
+Do not micro-optimize tests, migrations, or one-shot setup for allocation savings alone.
+When adding a hot-path helper, ask: "does this run per message/event?"
+
 ## Validation
 
 Local gate:

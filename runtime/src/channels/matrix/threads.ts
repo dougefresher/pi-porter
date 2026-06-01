@@ -6,8 +6,10 @@ export function parseMatrixThreadReplies(
   value: string | undefined,
   fallback: MatrixThreadReplies,
 ): MatrixThreadReplies {
-  const normalized = (value ?? '').trim().toLowerCase();
-  if (!normalized) return fallback;
+  if (!value) {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
   if (normalized === 'off' || normalized === 'inbound' || normalized === 'always') {
     return normalized;
   }
