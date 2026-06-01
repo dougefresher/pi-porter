@@ -8,8 +8,10 @@ import type { ChannelRuntime } from '../types.js';
 import { MatrixAccessControl } from './access.js';
 import { handleMatrixCommand, isMatrixSlashCommand } from './commands.js';
 import { MatrixChannel } from './matrix.js';
+import { parseMatrixTarget } from './matrix-targets.js';
 import { isMatrixMentioned, stripMatrixMentionPrefix } from './mentions.js';
 import { buildMatrixSessionKey } from './session.js';
+import type { MatrixThreadReplies } from './threads.js';
 
 export type MatrixRuntimeOptions = {
   bus: PostgresBus;
@@ -25,6 +27,8 @@ export type MatrixRuntimeOptions = {
   requireMention: boolean;
   replyPrefix: string;
   formatHtml: boolean;
+  threadReplies: MatrixThreadReplies;
+  ackReaction: string;
   workdirStore?: ChannelWorkdirStore;
 };
 
@@ -36,6 +40,7 @@ export class MatrixRuntime implements ChannelRuntime {
   private sessionArchiveStore: SessionArchiveStore;
   private sessionRoot: string;
   private requireMention: boolean;
+  private ackReaction: string;
   private workdirStore: ChannelWorkdirStore | undefined;
   private channel: MatrixChannel;
 
@@ -46,6 +51,7 @@ export class MatrixRuntime implements ChannelRuntime {
     this.sessionArchiveStore = options.sessionArchiveStore;
     this.sessionRoot = options.sessionRoot;
     this.requireMention = options.requireMention;
+    this.ackReaction = options.ackReaction;
     this.workdirStore = options.workdirStore;
     this.channel = new MatrixChannel({
       homeserverUrl: options.homeserverUrl,
@@ -54,6 +60,7 @@ export class MatrixRuntime implements ChannelRuntime {
       replyPrefix: options.replyPrefix,
       formatHtml: options.formatHtml,
       autoJoinInvites: options.autoJoinInvites,
+      threadReplies: options.threadReplies,
       onMessage: async (message) => {
         if (message.isFromMe) return;
 
@@ -137,6 +144,17 @@ export class MatrixRuntime implements ChannelRuntime {
           agentContent = stripMatrixMentionPrefix(message.content, botUserId);
         }
 
+        if (this.ackReaction && message.eventId) {
+          this.channel.reactToMessage(message.roomId, message.eventId, this.ackReaction).catch((error) => {
+            console.warn('[matrix] ack reaction dispatch failed', {
+              operation: 'matrix.ack_reaction.dispatch',
+              roomId: message.roomId,
+              eventId: message.eventId,
+              err: error,
+            });
+          });
+        }
+
         const inboundId = await this.bus.publishMatrixInbound({
           sessionKey,
           channel: 'matrix',
@@ -186,12 +204,18 @@ export class MatrixRuntime implements ChannelRuntime {
     }
     if (delivery.type === 'typing_off') return;
     if (!delivery.content) return;
+
+    const target = parseMatrixTarget(delivery.chatId);
     const replyToEventId =
-      typeof delivery.metadata.replyToEventId === 'string' ? delivery.metadata.replyToEventId : undefined;
+      target.threadEventId || typeof delivery.metadata.replyToEventId !== 'string'
+        ? undefined
+        : delivery.metadata.replyToEventId;
+
     console.log('[matrix] send message', {
       chatId: delivery.chatId,
       outboundId: delivery.id,
       replyToEventId: replyToEventId ?? null,
+      threadEventId: target.threadEventId ?? null,
       contentLength: delivery.content.length,
     });
     await this.channel.sendMessage(delivery.chatId, delivery.content, { replyToEventId });

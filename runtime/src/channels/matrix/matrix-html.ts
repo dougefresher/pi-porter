@@ -168,6 +168,7 @@ export function buildMatrixMessageContent(options: BuildMatrixMessageOptions): R
       },
     } as RoomMessageEventContent;
   } else if (options.threadEventId) {
+    // Lazy thread creation: first m.thread reply materializes the thread. ./docs/matrix.md#threads
     content = {
       ...content,
       'm.relates_to': {

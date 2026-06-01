@@ -78,6 +78,8 @@ export class PorterDaemon {
           requireMention: this.config.matrix.requireMention,
           replyPrefix: this.config.matrix.replyPrefix,
           formatHtml: this.config.matrix.formatHtml,
+          threadReplies: this.config.matrix.threadReplies,
+          ackReaction: this.config.matrix.ackReaction,
           workdirStore: workdirs,
         }),
       );

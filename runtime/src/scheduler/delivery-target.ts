@@ -1,4 +1,4 @@
-import { buildMatrixChatId, decodeMatrixPeerId } from '../channels/matrix/matrix-targets.js';
+import { buildMatrixChatId, decodeMatrixPeerId, decodeMatrixThreadId } from '../channels/matrix/matrix-targets.js';
 import { buildTelegramChatJid } from '../channels/telegram/telegram-targets.js';
 import { parseSessionKey } from '../routing/session-key.js';
 
@@ -32,7 +32,7 @@ export function resolveOutboundFromSessionKey(sessionKey: string): OutboundDeliv
       channel: 'matrix',
       accountId: parsed.accountId,
       chatId: buildMatrixChatId(roomId, {
-        threadEventId: parsed.threadId ?? null,
+        threadEventId: parsed.threadId ? decodeMatrixThreadId(parsed.threadId) : null,
         isDirect: parsed.peerKind === 'dm',
       }),
     };

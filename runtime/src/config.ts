@@ -2,6 +2,8 @@ import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { DEFAULT_MATRIX_ACK_REACTION } from './channels/matrix/reactions.js';
+
 function expandHome(path: string): string {
   if (path === '~') return homedir();
   if (path.startsWith('~/')) return join(homedir(), path.slice(2));
@@ -33,6 +35,22 @@ function readBoolEnv(name: string, fallback: boolean): boolean {
   throw new Error(`Invalid boolean env value for ${name}: ${raw}`);
 }
 
+function readMatrixThreadRepliesEnv(
+  name: string,
+  fallback: 'off' | 'inbound' | 'always',
+): 'off' | 'inbound' | 'always' {
+  const raw = readEnv(name);
+  if (!raw) return fallback;
+  const value = raw.toLowerCase();
+  if (value === 'off' || value === 'inbound' || value === 'always') return value;
+  throw new Error(`Invalid Matrix thread replies mode for ${name}: ${raw}`);
+}
+
+function readMatrixAckReactionEnv(name: string, fallback: string): string {
+  if (process.env[name] === undefined) return fallback;
+  return process.env[name]?.trim() ?? '';
+}
+
 export type PorterConfig = {
   stateDir: string;
   configDir: string;
@@ -54,6 +72,8 @@ export type PorterConfig = {
     requireMention: boolean;
     replyPrefix: string;
     formatHtml: boolean;
+    threadReplies: 'off' | 'inbound' | 'always';
+    ackReaction: string;
   };
 };
 
@@ -77,6 +97,8 @@ export function loadConfig(): PorterConfig {
   const matrixRequireMention = readBoolEnv('PORTER_MATRIX_REQUIRE_MENTION', true);
   const matrixReplyPrefix = process.env.PORTER_MATRIX_REPLY_PREFIX?.trim() ?? 'porter';
   const matrixFormatHtml = readBoolEnv('PORTER_MATRIX_FORMAT_HTML', true);
+  const matrixThreadReplies = readMatrixThreadRepliesEnv('PORTER_MATRIX_THREAD_REPLIES', 'always');
+  const matrixAckReaction = readMatrixAckReactionEnv('PORTER_MATRIX_ACK_REACTION', DEFAULT_MATRIX_ACK_REACTION);
 
   if (telegramEnabled && !botToken) throw new Error('Missing Telegram bot token: PORTER_TELEGRAM_BOT_TOKEN');
   if (telegramEnabled && allowedSenders.length === 0) {
@@ -113,6 +135,8 @@ export function loadConfig(): PorterConfig {
       requireMention: matrixRequireMention,
       replyPrefix: matrixReplyPrefix,
       formatHtml: matrixFormatHtml,
+      threadReplies: matrixThreadReplies,
+      ackReaction: matrixAckReaction,
     },
   };
 }

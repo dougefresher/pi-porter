@@ -223,6 +223,15 @@ export class InboundWorker {
           channel: event.channel,
           chatId: event.chatId,
         });
+        const threadEventId =
+          typeof event.metadata.threadEventId === 'string' ? event.metadata.threadEventId : undefined;
+        const replyToEventId =
+          event.channel === 'matrix' && threadEventId
+            ? undefined
+            : typeof event.metadata.replyToEventId === 'string'
+              ? event.metadata.replyToEventId
+              : undefined;
+
         await this.bus.publishOutbound({
           inboundId: event.id,
           sessionKey: event.sessionKey,
@@ -232,8 +241,8 @@ export class InboundWorker {
           content: reply,
           metadata: {
             inboundId: event.id,
-            replyToEventId:
-              typeof event.metadata.replyToEventId === 'string' ? event.metadata.replyToEventId : undefined,
+            ...(threadEventId ? { threadEventId } : {}),
+            ...(replyToEventId ? { replyToEventId } : {}),
           },
         });
       }

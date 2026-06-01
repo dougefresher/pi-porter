@@ -198,6 +198,8 @@ will touch most often:
 | `PORTER_MATRIX_ALLOWED_ROOMS` | no | Room IDs porter responds in (empty = all rooms) |
 | `PORTER_MATRIX_REQUIRE_MENTION` | no | Default `1`; DMs always bypass this |
 | `PORTER_MATRIX_AUTO_JOIN_INVITES` | no | Default `1`; auto-accept room invites |
+| `PORTER_MATRIX_THREAD_REPLIES` | no | Default `always`; see [Threads](#threads) |
+| `PORTER_MATRIX_ACK_REACTION` | no | Default `👀`; set empty to disable ack reactions |
 | `PORTER_MATRIX_SYNC_TIMEOUT_MS` | no | Default `120000`; startup sync deadline in ms |
 
 ## Access control
@@ -269,15 +271,112 @@ Start a direct chat with the bot from your client. Porter detects DMs via
 
 ### Threads
 
-Porter detects thread replies (`m.thread` relation) and routes them to the
-correct session key. The `chatId` includes the thread root event ID:
+Porter uses **one session per thread** in group rooms. Each conversation with
+the bot lives in a Matrix thread rooted at the user's triggering message, not
+inline in the main room timeline.
 
-```
-matrix:room:!room123:example.com:thread:$threadRootEventId
+Implementation: `runtime/src/channels/matrix/threads.ts`, `matrix-html.ts`,
+`session.ts`.
+
+#### Configuration
+
+`PORTER_MATRIX_THREAD_REPLIES` controls when porter assigns a thread session:
+
+| Mode | Room behavior |
+| ------ | --------------- |
+| `always` (default) | Every room message gets its own thread session. Porter's first reply creates the thread. |
+| `inbound` | Thread session only when the user already posted inside an existing thread. Top-level room messages share one room session. |
+| `off` | No thread routing; all messages in a room share one session. Replies are inline (`m.in_reply_to`). |
+
+DMs always use `inbound` semantics regardless of this setting — porter does
+not spawn a new thread session for every DM message.
+
+#### How a thread session starts (default `always`)
+
+There is no separate "create thread" step. The thread is **lazy-created** by
+porter's first reply.
+
+1. **User posts in the room** (top-level, e.g. `@porter what's the weather?`).
+   Matrix assigns an event ID (`$abc123`). No thread UI exists yet.
+
+2. **Porter assigns a session immediately.** With `always`, porter treats that
+   event ID as the thread root:
+   - `chatId`: `matrix:room:!room:example.com:thread:$abc123`
+   - `session_key`: `main:matrix:default:room:<hex-room>:thread:<hex-event-id>`
+
+3. **Porter replies with `m.thread`.** The outbound event includes:
+
+   ```json
+   "m.relates_to": {
+     "rel_type": "m.thread",
+     "event_id": "$abc123",
+     "is_falling_back": true
+   }
+   ```
+
+   This tells Matrix clients: "this message belongs to a thread rooted at
+   `$abc123`." The first threaded reply **materializes** the thread in the UI.
+
+4. **User continues in the thread.** Their follow-up messages carry
+   `m.relates_to.rel_type = m.thread` pointing at `$abc123`. Porter routes
+   them to the same session and replies in the same thread.
+
+```text
+Room timeline:
+  Alice: "@porter what's the weather?"     ← thread root ($abc123)
+    └─ porter: "It's sunny..."             ← first reply creates the thread
+       Alice: "thanks"                     ← same session, same thread
 ```
 
-This means thread replies are handled as a separate conversation from the
-main room timeline. Porter's reply will also be threaded under the same root.
+#### Session vs Matrix timeline
+
+| Layer | What happens |
+| ------- | -------------- |
+| **Porter session** | Thread root event ID = session identity. Assigned on inbound, before any reply. |
+| **Matrix protocol** | Thread = messages related to event X. First `m.thread` reply instantiates it. |
+| **Room timeline** | Stays clean; bot conversation lives under the thread, not as inline noise. |
+
+#### Thread IDs and case
+
+Matrix event IDs are case-sensitive (e.g. `$7aVLDylqL5VqpEy...`). Porter
+hex-encodes thread IDs inside `session_key` (same approach as room IDs) so
+special characters and case survive round-trips. The `chat_id` and outbound
+`m.thread` relation use the original event ID verbatim.
+
+#### Follow-up in an existing thread
+
+When a user posts inside a thread porter did not start (or continues an
+existing one), porter reads the `m.thread` relation on the inbound event and
+uses that root event ID for routing — same session key shape as above.
+
+#### Replies vs threads on outbound
+
+When delivering into a thread session, porter sends `m.thread` (not plain
+`m.in_reply_to`). Inline reply-to is only used when `PORTER_MATRIX_THREAD_REPLIES=off`
+or for non-thread sessions.
+
+### Ack reactions
+
+When porter accepts an inbound message for agent processing, it immediately
+reacts on the user's message with an emoji (default `👀`). This signals that
+the message was received and a reply is coming.
+
+Set `PORTER_MATRIX_ACK_REACTION` to customize the emoji, or set it empty to
+disable:
+
+```bash
+export PORTER_MATRIX_ACK_REACTION=👀   # default
+export PORTER_MATRIX_ACK_REACTION=     # disabled
+```
+
+Reactions fire for all accepted messages (rooms and DMs) after access and
+mention checks pass. Slash commands and skipped messages do not get a reaction.
+
+Implementation: `runtime/src/channels/matrix/reactions.ts`.
+
+When someone uses Matrix's quote-reply inside a thread, porter may prepend
+reply context to the agent prompt (`[Replying to @alice: "..."]`) — that is
+prompt enrichment only; routing still follows the thread root.
 
 ### Replies and reply context
 
@@ -289,8 +388,8 @@ and prepends context to the agent input:
 new message here
 ```
 
-The replied-to event ID is also passed through delivery metadata, so porter's
-response can be sent as a Matrix reply (via `m.in_reply_to`).
+This is separate from thread routing — see [Threads](#threads) for how
+sessions and outbound delivery are chosen.
 
 ## How session keys work
 
@@ -299,16 +398,19 @@ Porter maps Matrix conversations to stable session keys:
 ```
 main:matrix:default:dm:<hex-encoded-room-id>
 main:matrix:default:room:<hex-encoded-room-id>
-main:matrix:default:room:<hex-encoded-room-id>:thread:<thread-root-event-id>
+main:matrix:default:room:<hex-encoded-room-id>:thread:<hex-encoded-event-id>
 ```
 
 - **DMs** get `peerKind: dm`, which means they bypass the mention requirement.
 - **Group rooms** get `peerKind: room` and require mentions.
-- **Threads** append `:thread:<eventId>` for isolated sub-conversations.
+- **Threads** append `:thread:<hex-encoded-event-id>` for isolated sub-conversations.
+  With `PORTER_MATRIX_THREAD_REPLIES=always` (default), every room message gets
+  a thread session keyed to that message's event ID.
 
-The room ID is hex-encoded (not base64) to safely include `!` and `:` characters
-in the session key. See `runtime/src/channels/matrix/matrix-targets.ts` and
-`runtime/src/channels/matrix/session.ts` for the implementation.
+Room and thread IDs are hex-encoded (not base64) to safely include `!`, `:`, and
+`$` in session keys while preserving case on decode. See
+`runtime/src/channels/matrix/matrix-targets.ts` and
+`runtime/src/channels/matrix/session.ts`.
 
 Room chat IDs use the format:
 
@@ -316,6 +418,9 @@ Room chat IDs use the format:
 matrix:room:!room123:example.com
 matrix:room:!room123:example.com:thread:$eventId
 ```
+
+The `chat_id` carries the raw Matrix event ID; the `session_key` carries the
+hex-encoded form.
 
 ## Commands
 
