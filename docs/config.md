@@ -44,6 +44,7 @@ Model/provider/tool settings come from Pi global and project-local config — po
 | `PORTER_MATRIX_REPLY_PREFIX` | `porter` | Prefix on outbound room messages; skipped in DMs. Empty disables |
 | `PORTER_MATRIX_FORMAT_HTML` | `1` | Send `formatted_body` HTML for agent replies |
 | `PORTER_MATRIX_THREAD_REPLIES` | `always` | Thread session routing: `off`, `inbound`, or `always`. See `./docs/matrix.md` |
+| `PORTER_MATRIX_ACK_REACTION` | `👀` | Emoji reaction on accepted inbound messages; set empty to disable |
 | `PORTER_MATRIX_SYNC_TIMEOUT_MS` | `120000` | Startup sync deadline (read in matrix channel, not `config.ts`) |
 
 ## Legacy Aliases

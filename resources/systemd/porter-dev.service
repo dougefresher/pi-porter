@@ -9,6 +9,7 @@ Type=simple
 WorkingDirectory=%h/workspace
 EnvironmentFile=%h/workspace/.env
 ExecStart=%h/.local/bin/porter
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Restart=on-failure
 RestartSec=10s
 RestartSteps=4

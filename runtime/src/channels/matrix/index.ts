@@ -28,6 +28,7 @@ export type MatrixRuntimeOptions = {
   replyPrefix: string;
   formatHtml: boolean;
   threadReplies: MatrixThreadReplies;
+  ackReaction: string;
   workdirStore?: ChannelWorkdirStore;
 };
 
@@ -39,6 +40,7 @@ export class MatrixRuntime implements ChannelRuntime {
   private sessionArchiveStore: SessionArchiveStore;
   private sessionRoot: string;
   private requireMention: boolean;
+  private ackReaction: string;
   private workdirStore: ChannelWorkdirStore | undefined;
   private channel: MatrixChannel;
 
@@ -49,6 +51,7 @@ export class MatrixRuntime implements ChannelRuntime {
     this.sessionArchiveStore = options.sessionArchiveStore;
     this.sessionRoot = options.sessionRoot;
     this.requireMention = options.requireMention;
+    this.ackReaction = options.ackReaction;
     this.workdirStore = options.workdirStore;
     this.channel = new MatrixChannel({
       homeserverUrl: options.homeserverUrl,
@@ -139,6 +142,10 @@ export class MatrixRuntime implements ChannelRuntime {
         let agentContent = message.content;
         if (!message.isDirect && botUserId) {
           agentContent = stripMatrixMentionPrefix(message.content, botUserId);
+        }
+
+        if (this.ackReaction && message.eventId) {
+          void this.channel.reactToMessage(message.roomId, message.eventId, this.ackReaction);
         }
 
         const inboundId = await this.bus.publishMatrixInbound({

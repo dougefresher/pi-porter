@@ -199,6 +199,7 @@ will touch most often:
 | `PORTER_MATRIX_REQUIRE_MENTION` | no | Default `1`; DMs always bypass this |
 | `PORTER_MATRIX_AUTO_JOIN_INVITES` | no | Default `1`; auto-accept room invites |
 | `PORTER_MATRIX_THREAD_REPLIES` | no | Default `always`; see [Threads](#threads) |
+| `PORTER_MATRIX_ACK_REACTION` | no | Default `👀`; set empty to disable ack reactions |
 | `PORTER_MATRIX_SYNC_TIMEOUT_MS` | no | Default `120000`; startup sync deadline in ms |
 
 ## Access control
@@ -353,6 +354,25 @@ uses that root event ID for routing — same session key shape as above.
 When delivering into a thread session, porter sends `m.thread` (not plain
 `m.in_reply_to`). Inline reply-to is only used when `PORTER_MATRIX_THREAD_REPLIES=off`
 or for non-thread sessions.
+
+### Ack reactions
+
+When porter accepts an inbound message for agent processing, it immediately
+reacts on the user's message with an emoji (default `👀`). This signals that
+the message was received and a reply is coming.
+
+Set `PORTER_MATRIX_ACK_REACTION` to customize the emoji, or set it empty to
+disable:
+
+```bash
+export PORTER_MATRIX_ACK_REACTION=👀   # default
+export PORTER_MATRIX_ACK_REACTION=     # disabled
+```
+
+Reactions fire for all accepted messages (rooms and DMs) after access and
+mention checks pass. Slash commands and skipped messages do not get a reaction.
+
+Implementation: `runtime/src/channels/matrix/reactions.ts`.
 
 When someone uses Matrix's quote-reply inside a thread, porter may prepend
 reply context to the agent prompt (`[Replying to @alice: "..."]`) — that is

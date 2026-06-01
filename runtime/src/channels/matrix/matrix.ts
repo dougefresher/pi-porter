@@ -12,6 +12,7 @@ import {
 
 import { DirectRoomTracker } from './direct-rooms.js';
 import { buildMatrixMessageContent, readMatrixMessagePlainText } from './matrix-html.js';
+import { buildMatrixReactionContent } from './reactions.js';
 import { buildMatrixChatId, parseMatrixTarget } from './matrix-targets.js';
 import { buildReplyAwareContent, readFormattedBody, readMatrixMentions } from './reply-context.js';
 import { type MatrixThreadReplies, resolveMatrixThreadRouting } from './threads.js';
@@ -271,6 +272,26 @@ export class MatrixChannel {
       logWarn('transient typing update failed', {
         operation: 'matrix.typing',
         chatId,
+        err: error,
+      });
+    }
+  }
+
+  async reactToMessage(roomId: string, messageId: string, emoji: string): Promise<void> {
+    if (!this.connected || !this.client) return;
+
+    const trimmedMessageId = messageId.trim();
+    const trimmedEmoji = emoji.trim();
+    if (!trimmedMessageId || !trimmedEmoji) return;
+
+    try {
+      const content = buildMatrixReactionContent(trimmedMessageId, trimmedEmoji);
+      await this.client.sendEvent(roomId, EventType.Reaction, content);
+    } catch (error) {
+      logWarn('ack reaction failed', {
+        operation: 'matrix.ack_reaction',
+        roomId,
+        messageId: trimmedMessageId,
         err: error,
       });
     }
