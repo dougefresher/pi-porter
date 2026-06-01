@@ -33,6 +33,15 @@ export function sanitizeSegment(value: string | undefined | null, options?: { al
   return cleaned.slice(0, 64);
 }
 
+export function sanitizeOpaqueSegment(value: string | undefined | null): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) return '';
+  if (!/^[a-z0-9_-]+$/i.test(trimmed)) {
+    throw new Error(`invalid opaque session segment: ${trimmed}`);
+  }
+  return trimmed;
+}
+
 export function isValidSegment(value: string | undefined | null): boolean {
   const trimmed = (value ?? '').trim();
   return Boolean(trimmed && trimmed.length <= 64 && validSegmentRe.test(trimmed));
@@ -48,7 +57,7 @@ export function buildSessionKey(params: BuildSessionKeyParams): string {
   ];
 
   if (params.threadId) {
-    segments.push('thread', sanitizeSegment(params.threadId, { allowLeadingDash: true }) || 'unknown');
+    segments.push('thread', sanitizeOpaqueSegment(params.threadId) || 'unknown');
   }
 
   return segments.join(':');
@@ -74,7 +83,7 @@ export function parseSessionKey(sessionKey: string | undefined | null): ParsedSe
     const marker = rest[i]?.toLowerCase();
     const value = rest[i + 1];
     if (marker === 'thread' && value) {
-      parsed.threadId = value.toLowerCase();
+      parsed.threadId = value;
       i += 2;
     } else {
       i += 1;

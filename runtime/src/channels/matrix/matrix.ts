@@ -14,6 +14,7 @@ import { DirectRoomTracker } from './direct-rooms.js';
 import { buildMatrixMessageContent, readMatrixMessagePlainText } from './matrix-html.js';
 import { buildMatrixChatId, parseMatrixTarget } from './matrix-targets.js';
 import { buildReplyAwareContent, readFormattedBody, readMatrixMentions } from './reply-context.js';
+import { type MatrixThreadReplies, resolveMatrixThreadRouting } from './threads.js';
 
 export interface MatrixChannelOpts {
   homeserverUrl: string;
@@ -22,6 +23,7 @@ export interface MatrixChannelOpts {
   replyPrefix?: string;
   formatHtml?: boolean;
   autoJoinInvites?: boolean;
+  threadReplies?: MatrixThreadReplies;
   onMessage: (message: MatrixInboundMessage) => Promise<void> | void;
   onConnected?: (userId: string) => void;
   onDisconnected?: () => void;
@@ -296,8 +298,16 @@ export class MatrixChannel {
 
     const roomId = room.roomId;
     const isDirect = this.directRooms?.isDirectRoom(room) ?? false;
-    const threadEventId = readThreadRootEventId(event);
-    const chatId = buildMatrixChatId(roomId, { threadEventId, isDirect });
+    const messageId = event.getId() ?? '';
+    const threadRootId = readThreadRootEventId(event);
+    // Session-per-thread routing (default always): ./docs/matrix.md#threads
+    const { threadId } = resolveMatrixThreadRouting({
+      isDirectMessage: isDirect,
+      threadReplies: this.opts.threadReplies ?? 'always',
+      messageId,
+      threadRootId,
+    });
+    const chatId = buildMatrixChatId(roomId, { threadEventId: threadId, isDirect });
 
     await this.opts.onMessage({
       chatId,
@@ -306,8 +316,8 @@ export class MatrixChannel {
       isFromMe,
       isDirect,
       senderId,
-      eventId: event.getId() ?? undefined,
-      threadEventId,
+      eventId: messageId || undefined,
+      threadEventId: threadId,
       replyToEventId,
       formattedBody: readFormattedBody(rawContent),
       mMentions: readMatrixMentions(rawContent),

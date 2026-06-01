@@ -36,6 +36,14 @@ export function decodeMatrixPeerId(encoded: string): string {
   return Buffer.from(encoded, 'hex').toString('utf8');
 }
 
+export function encodeMatrixThreadId(eventId: string): string {
+  return Buffer.from(eventId, 'utf8').toString('hex');
+}
+
+export function decodeMatrixThreadId(encoded: string): string {
+  return Buffer.from(encoded, 'hex').toString('utf8');
+}
+
 export function parseMatrixTarget(to: string): MatrixTarget {
   const normalized = stripKnownPrefixes(to, [MATRIX_PREFIX, ROOM_PREFIX]);
   if (!normalized) {

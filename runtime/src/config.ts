@@ -33,6 +33,14 @@ function readBoolEnv(name: string, fallback: boolean): boolean {
   throw new Error(`Invalid boolean env value for ${name}: ${raw}`);
 }
 
+function readMatrixThreadRepliesEnv(name: string, fallback: 'off' | 'inbound' | 'always'): 'off' | 'inbound' | 'always' {
+  const raw = readEnv(name);
+  if (!raw) return fallback;
+  const value = raw.toLowerCase();
+  if (value === 'off' || value === 'inbound' || value === 'always') return value;
+  throw new Error(`Invalid Matrix thread replies mode for ${name}: ${raw}`);
+}
+
 export type PorterConfig = {
   stateDir: string;
   configDir: string;
@@ -54,6 +62,7 @@ export type PorterConfig = {
     requireMention: boolean;
     replyPrefix: string;
     formatHtml: boolean;
+    threadReplies: 'off' | 'inbound' | 'always';
   };
 };
 
@@ -77,6 +86,7 @@ export function loadConfig(): PorterConfig {
   const matrixRequireMention = readBoolEnv('PORTER_MATRIX_REQUIRE_MENTION', true);
   const matrixReplyPrefix = process.env.PORTER_MATRIX_REPLY_PREFIX?.trim() ?? 'porter';
   const matrixFormatHtml = readBoolEnv('PORTER_MATRIX_FORMAT_HTML', true);
+  const matrixThreadReplies = readMatrixThreadRepliesEnv('PORTER_MATRIX_THREAD_REPLIES', 'always');
 
   if (telegramEnabled && !botToken) throw new Error('Missing Telegram bot token: PORTER_TELEGRAM_BOT_TOKEN');
   if (telegramEnabled && allowedSenders.length === 0) {
@@ -113,6 +123,7 @@ export function loadConfig(): PorterConfig {
       requireMention: matrixRequireMention,
       replyPrefix: matrixReplyPrefix,
       formatHtml: matrixFormatHtml,
+      threadReplies: matrixThreadReplies,
     },
   };
 }

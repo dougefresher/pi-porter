@@ -10,6 +10,8 @@ import { handleMatrixCommand, isMatrixSlashCommand } from './commands.js';
 import { MatrixChannel } from './matrix.js';
 import { isMatrixMentioned, stripMatrixMentionPrefix } from './mentions.js';
 import { buildMatrixSessionKey } from './session.js';
+import { parseMatrixTarget } from './matrix-targets.js';
+import type { MatrixThreadReplies } from './threads.js';
 
 export type MatrixRuntimeOptions = {
   bus: PostgresBus;
@@ -25,6 +27,7 @@ export type MatrixRuntimeOptions = {
   requireMention: boolean;
   replyPrefix: string;
   formatHtml: boolean;
+  threadReplies: MatrixThreadReplies;
   workdirStore?: ChannelWorkdirStore;
 };
 
@@ -54,6 +57,7 @@ export class MatrixRuntime implements ChannelRuntime {
       replyPrefix: options.replyPrefix,
       formatHtml: options.formatHtml,
       autoJoinInvites: options.autoJoinInvites,
+      threadReplies: options.threadReplies,
       onMessage: async (message) => {
         if (message.isFromMe) return;
 
@@ -186,12 +190,18 @@ export class MatrixRuntime implements ChannelRuntime {
     }
     if (delivery.type === 'typing_off') return;
     if (!delivery.content) return;
+
+    const target = parseMatrixTarget(delivery.chatId);
     const replyToEventId =
-      typeof delivery.metadata.replyToEventId === 'string' ? delivery.metadata.replyToEventId : undefined;
+      target.threadEventId || typeof delivery.metadata.replyToEventId !== 'string'
+        ? undefined
+        : delivery.metadata.replyToEventId;
+
     console.log('[matrix] send message', {
       chatId: delivery.chatId,
       outboundId: delivery.id,
       replyToEventId: replyToEventId ?? null,
+      threadEventId: target.threadEventId ?? null,
       contentLength: delivery.content.length,
     });
     await this.channel.sendMessage(delivery.chatId, delivery.content, { replyToEventId });
