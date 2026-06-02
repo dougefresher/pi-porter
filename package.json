@@ -45,7 +45,8 @@
     "@earendil-works/pi-ai": "0.78.0",
     "@earendil-works/pi-coding-agent": "0.78.0",
     "grammy": "1.38.0",
-    "matrix-js-sdk": "41.6.0"
+    "matrix-js-sdk": "41.6.0",
+    "quick-lru": "^7.3.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",

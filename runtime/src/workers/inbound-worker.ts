@@ -77,6 +77,7 @@ export class InboundWorker {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.agent.shutdown?.();
     await this.running;
   }
 
