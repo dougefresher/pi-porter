@@ -123,7 +123,8 @@ export class InboundWorker {
       if (scheduledTask?.preHook) {
         const preHookOk = await this.runPreHook(scheduledTask, event.id);
         if (!preHookOk) {
-          await this.bus.markInboundDone(event.id);
+          await this.bus.markInboundFailed(event.id, 'Pre-hook failed');
+          await this.archiveScheduledSession(event.sessionKey, scheduled.taskId);
           return;
         }
       }
