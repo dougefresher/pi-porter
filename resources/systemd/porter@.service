@@ -9,7 +9,7 @@ Type=simple
 WorkingDirectory=%h/%i
 EnvironmentFile=%h/%i/.env
 # Prod unit: packaged install at a fixed path. PATH only affects subprocesses, not ExecStart.
-ExecStart=/usr/bin/porter
+ExecStart=/usr/bin/porter --serve
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Restart=on-failure
 RestartSec=5

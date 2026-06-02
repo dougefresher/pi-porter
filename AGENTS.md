@@ -38,6 +38,45 @@ Replies route deterministically back to the channel/conversation that caused the
 
 Transport tables are a durable Postgres message bus, not the transcript store. This keeps crash recovery and replay separate from context shaping and long-term memory.
 
+## Agent worker pool
+
+Pi sessions are expensive to create and dispose (model init, extension bootstrap, session manager setup). Instead of fire-and-dispose per inbound message, porter keeps long-lived Pi sessions as **Bun child processes** communicating over IPC.
+
+```text
+PiAgentRunner.run()
+  │
+  └─ SessionWorkerPool.prompt(sessionKey, text)
+       │
+       ├─ getOrSpawn(key)
+       │    ├─ cache hit  → reuse hot child
+       │    └─ cache miss → Bun.spawn([execPath, '--agent-worker'], { ipc })
+       │                    ├─ parent sends { type: 'init', sessionKey, cwd, sessionDir }
+       │                    ├─ child creates Pi session (one-time)
+       │                    └─ child sends { type: 'ready' }
+       │
+       └─ child IPC message loop:
+            parent → { type: 'prompt', text }  → child → session.prompt(text)
+            child  → { type: 'delta', text }   → parent accumulates stream
+            child  → { type: 'done', result }  → parent resolves promise
+```
+
+**Design decisions:**
+
+- **One session per child process.** A child spawns once, creates the session once, and never calls `dispose()`. It lives until the parent SIGTERMs it (LRU eviction or daemon shutdown).
+- **Binary self-spawning.** The compiled porter binary handles all three modes (`porter` = client CLI, `porter --serve` = daemon, `porter --agent-worker` = child worker). The pool spawns `[execPath, '--agent-worker']` so the binary re-executes itself. In development this becomes `[bun, entrypoint, '--agent-worker']`.
+- **QuickLRU for lifecycle.** The pool uses QuickLRU (`maxSize`, `maxAge`, `onEviction`) to bound concurrent workers and expire idle ones. Eviction sends SIGTERM; a crashed child's `onExit` rejects any in-flight prompt.
+- **Per-key serialization.** Multiple inbound events for the same session key chain on a promise-based lock so a single Pi session never receives concurrent prompts.
+- **Timeout in parent.** The parent times out the prompt (SIGTERM to child if exceeded), not the child. This keeps the child simple and stateless between prompts.
+
+**Config knobs (env):**
+
+| Variable | Default | |
+|---|---|---|
+| `PORTER_AGENT_WORKER_MAX_COUNT` | `10` | Max concurrent child processes |
+| `PORTER_AGENT_WORKER_IDLE_TIMEOUT_MS` | `600000` | 10 min idle before SIGTERM eviction |
+
+**Systemd integration:** Both service files use `ExecStart=porter --serve` (explicit daemon flag) and `KillMode=mixed`. The daemon's SIGTERM handler calls `pool.shutdown()` to kill all children. Systemd acts as a SIGKILL safety net after `TimeoutStopSec=30`.
+
 ## PostgreSQL stance
 
 Postgres is part of the platform. The app should use Postgres features directly:

@@ -55,6 +55,8 @@ export type PorterConfig = {
   stateDir: string;
   configDir: string;
   agentPromptTimeoutMs: number;
+  agentWorkerMaxCount: number;
+  agentWorkerIdleTimeoutMs: number;
   telegram: {
     enabled: boolean;
     botToken: string;
@@ -118,6 +120,8 @@ export function loadConfig(): PorterConfig {
     stateDir,
     configDir,
     agentPromptTimeoutMs: Number.parseInt(readEnv('PORTER_AGENT_PROMPT_TIMEOUT_MS', '900000'), 10) || 900_000,
+    agentWorkerMaxCount: Number.parseInt(readEnv('PORTER_AGENT_WORKER_MAX_COUNT', '10'), 10) || 10,
+    agentWorkerIdleTimeoutMs: Number.parseInt(readEnv('PORTER_AGENT_WORKER_IDLE_TIMEOUT_MS', '600000'), 10) || 600_000,
     telegram: {
       enabled: telegramEnabled,
       botToken,

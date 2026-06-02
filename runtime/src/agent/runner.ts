@@ -8,6 +8,7 @@ export type AgentRunInput = {
 
 export type AgentRunner = {
   run(input: AgentRunInput): Promise<string>;
+  shutdown?(): void;
 };
 
 export class EchoAgentRunner implements AgentRunner {
