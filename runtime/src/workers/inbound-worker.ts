@@ -8,8 +8,9 @@ import type { ScheduledTaskStore } from '../db/scheduled-task-store.js';
 import type { SessionArchiveStore } from '../db/session-archive-store.js';
 import { SessionStore } from '../db/session-store.js';
 import { TranscriptStore } from '../db/transcript-store.js';
-import { appendCronLog, computeNextRun, resolveOutboundFromSessionKey } from '../scheduler/index.js';
+import { appendCronLog, computeNextRun, resolveOutboundFromSessionKey, runHook } from '../scheduler/index.js';
 import type { SchedulerRegistry } from '../scheduler/registry.js';
+import type { ScheduledTask } from '../scheduler/types.js';
 
 export type InboundWorkerOptions = {
   stateDir: string;
@@ -113,7 +114,20 @@ export class InboundWorker {
     const startedAt = Date.now();
     const scheduled = readScheduledMetadata(event.metadata);
 
+    let scheduledTask: ScheduledTask | null = null;
+
     try {
+      if (scheduled.isScheduled && scheduled.taskId) {
+        scheduledTask = await this.options.scheduledTasks.getById(scheduled.taskId);
+      }
+      if (scheduledTask?.preHook) {
+        const preHookOk = await this.runPreHook(scheduledTask, event.id);
+        if (!preHookOk) {
+          await this.bus.markInboundDone(event.id);
+          return;
+        }
+      }
+
       await this.transcripts.append({
         sessionKey: event.sessionKey,
         inboundId: event.id,
@@ -215,6 +229,10 @@ export class InboundWorker {
           await this.options.scheduler?.notifyTaskComplete(scheduled.taskId);
         }
 
+        if (scheduledTask?.postHook) {
+          await this.runPostHook(scheduledTask);
+        }
+
         await this.archiveScheduledSession(event.sessionKey, scheduled.taskId);
       } else {
         console.log('[inbound-worker] publishing direct reply outbound', {
@@ -268,6 +286,9 @@ export class InboundWorker {
             });
             await this.recordScheduledFailure(scheduled.taskId, event.id, startedAt, error);
             await this.options.scheduler?.notifyTaskComplete(scheduled.taskId);
+          }
+          if (scheduledTask?.postHook) {
+            await this.runPostHook(scheduledTask);
           }
           await this.archiveScheduledSession(event.sessionKey, scheduled.taskId);
         }
@@ -350,5 +371,102 @@ export class InboundWorker {
       status: 'error',
       error: message,
     });
+  }
+
+  private async runPreHook(task: ScheduledTask, inboundId: number): Promise<boolean> {
+    console.log('[inbound-worker] running pre-hook', { taskId: task.id, preHook: task.preHook });
+    const hookStart = Date.now();
+    try {
+      const result = await runHook(task.preHook!, task.workdir);
+      const durationMs = Date.now() - hookStart;
+      if (result.exitCode !== 0) {
+        console.error('[inbound-worker] pre-hook failed (aborting task)', {
+          taskId: task.id,
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          durationMs,
+        });
+        await appendCronLog(this.options.stateDir, {
+          taskId: task.id,
+          taskName: task.name,
+          status: 'error',
+          durationMs,
+          prompt: `[pre-hook] ${task.preHook}`,
+          error: `exit=${result.exitCode} stderr=${result.stderr || result.stdout}`,
+        });
+        await this.options.scheduledTasks.logRun({
+          taskId: task.id,
+          inboundId,
+          durationMs,
+          status: 'error',
+          error: `Pre-hook failed (exit ${result.exitCode}): ${result.stderr || result.stdout}`,
+        });
+        const nextRun = computeNextRun(task.scheduleType, task.scheduleValue);
+        await this.options.scheduledTasks.updateAfterRun(task.id, {
+          nextRun,
+          lastResult: `Pre-hook failed (exit ${result.exitCode})`,
+          status: nextRun == null ? 'completed' : undefined,
+        });
+        await this.options.scheduler?.notifyTaskComplete(task.id);
+        return false;
+      }
+      console.log('[inbound-worker] pre-hook succeeded', { taskId: task.id, durationMs });
+      return true;
+    } catch (error) {
+      const durationMs = Date.now() - hookStart;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[inbound-worker] pre-hook error (aborting task)', { taskId: task.id, error: message, durationMs });
+      await appendCronLog(this.options.stateDir, {
+        taskId: task.id,
+        taskName: task.name,
+        status: 'error',
+        durationMs,
+        prompt: `[pre-hook] ${task.preHook}`,
+        error: message,
+      });
+      await this.options.scheduledTasks.logRun({
+        taskId: task.id,
+        inboundId,
+        durationMs,
+        status: 'error',
+        error: `Pre-hook error: ${message}`,
+      });
+      const nextRun = computeNextRun(task.scheduleType, task.scheduleValue);
+      await this.options.scheduledTasks.updateAfterRun(task.id, {
+        nextRun,
+        lastResult: `Pre-hook error: ${message.slice(0, 200)}`,
+        status: nextRun == null ? 'completed' : undefined,
+      });
+      await this.options.scheduler?.notifyTaskComplete(task.id);
+      return false;
+    }
+  }
+
+  private async runPostHook(task: ScheduledTask): Promise<void> {
+    console.log('[inbound-worker] running post-hook', { taskId: task.id, postHook: task.postHook });
+    const hookStart = Date.now();
+    try {
+      const result = await runHook(task.postHook!, task.workdir);
+      const durationMs = Date.now() - hookStart;
+      if (result.exitCode !== 0) {
+        console.error('[inbound-worker] post-hook failed (non-fatal)', {
+          taskId: task.id,
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          durationMs,
+        });
+      } else {
+        console.log('[inbound-worker] post-hook succeeded', { taskId: task.id, durationMs });
+      }
+    } catch (error) {
+      const durationMs = Date.now() - hookStart;
+      console.error('[inbound-worker] post-hook error (non-fatal)', {
+        taskId: task.id,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs,
+      });
+    }
   }
 }

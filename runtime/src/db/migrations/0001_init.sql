@@ -113,6 +113,8 @@ create table if not exists scheduled_tasks (
   agent_session_key text not null references sessions (session_key),
   report_session_key text references sessions (session_key),
   workdir text,
+  pre_hook text,
+  post_hook text,
   schedule_type schedule_type_t not null,
   schedule_value text not null,
   next_run timestamptz,
