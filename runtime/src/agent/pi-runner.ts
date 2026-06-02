@@ -54,6 +54,9 @@ export class PiAgentRunner implements AgentRunner {
       return result;
     } finally {
       release!();
+      if (this.locks.get(key) === thisLock) {
+        this.locks.delete(key);
+      }
     }
   }
 

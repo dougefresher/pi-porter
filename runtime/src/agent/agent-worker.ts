@@ -88,6 +88,7 @@ process.on('message', async (msg: any) => {
     });
 
     try {
+      promptActive = true;
       await session.prompt(msg.text, { source: 'rpc' });
       const streamed = chunks.join('').trim();
       const errorText = assistantErrorText(session.state.messages);
@@ -96,17 +97,30 @@ process.on('message', async (msg: any) => {
     } catch (error) {
       send({ type: 'error', message: error instanceof Error ? error.message : String(error) });
     } finally {
+      promptActive = false;
       unsubscribe();
     }
     return;
   }
 });
 
+// Track in-flight prompt state so SIGTERM can abort cleanly.
+let promptActive = false;
+
 // Keep the process alive. Without this, Bun would exit after the
 // synchronous top-level code finishes and no I/O is pending.
 // The IPC channel keeps the event loop alive as long as the parent
 // hasn't disconnected, but we set an empty interval as a failsafe.
 const keepAlive = setInterval(() => {}, 86_400_000); // no-op every 24h
+
 process.on('SIGTERM', () => {
   clearInterval(keepAlive);
+  if (promptActive && session) {
+    session.abort().catch((error: unknown) => {
+      console.error('[agent-worker] session abort during SIGTERM failed', { error });
+    });
+  }
+  // If no prompt is active, clearing keepAlive lets the process exit naturally.
+  // If a prompt is active, the abort will cause session.prompt() to reject,
+  // which the catch handler already converts to { type: 'error' } before exiting.
 });

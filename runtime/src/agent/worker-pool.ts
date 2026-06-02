@@ -72,6 +72,10 @@ export class SessionWorkerPool {
       maxSize: options.maxWorkers,
       maxAge: options.idleTimeoutMs,
       onEviction: (key, entry) => {
+        if (entry.state === 'busy') {
+          console.warn('[worker-pool] refusing to evict busy worker', { sessionKey: key });
+          return;
+        }
         console.log('[worker-pool] evicting idle worker', { sessionKey: key });
         entry.proc.kill('SIGTERM');
       },
@@ -213,11 +217,30 @@ export class SessionWorkerPool {
     return entry;
   }
 
+  /** Evict one idle worker to make room before inserting a new entry. */
+  #makeRoom(): void {
+    if (this.workers.size < this.workers.maxSize) return;
+
+    for (const [key, entry] of this.workers.entriesDescending()) {
+      if (entry.state !== 'busy') {
+        console.log('[worker-pool] making room, evicting idle worker', { sessionKey: key });
+        entry.proc.kill('SIGTERM');
+        // QuickLRU.delete() does not fire onEviction, so we kill explicitly.
+        this.workers.delete(key);
+        return;
+      }
+    }
+    // All workers are busy — insertion will temporarily exceed maxSize.
+    // QuickLRU tolerates up to 2x maxSize before automatic eviction,
+    // and onEviction is guarded against busy workers.
+  }
+
   async #getOrSpawn(key: string, cwd: string): Promise<WorkerEntry> {
     const existing = this.workers.get(key);
     if (existing) return existing;
 
     const entry = this.#spawn(key, cwd);
+    this.#makeRoom();
     this.workers.set(key, entry);
 
     try {
