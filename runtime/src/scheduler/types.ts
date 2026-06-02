@@ -9,6 +9,8 @@ export type ScheduledTask = {
   agentSessionKey: string;
   reportSessionKey: string | null;
   workdir: string | null;
+  preHook: string | null;
+  postHook: string | null;
   scheduleType: ScheduleType;
   scheduleValue: string;
   nextRun: Date | null;

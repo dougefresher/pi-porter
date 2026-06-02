@@ -14,6 +14,8 @@ function mapTask(row: Record<string, unknown>): ScheduledTask {
     agentSessionKey: String(row.agent_session_key),
     reportSessionKey: (row.report_session_key as string | null) ?? null,
     workdir: (row.workdir as string | null) ?? null,
+    preHook: (row.pre_hook as string | null) ?? null,
+    postHook: (row.post_hook as string | null) ?? null,
     scheduleType: row.schedule_type as ScheduledTask['scheduleType'],
     scheduleValue: String(row.schedule_value),
     nextRun: (row.next_run as Date | null) ?? null,
