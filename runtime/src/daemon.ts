@@ -118,7 +118,7 @@ export class PorterDaemon {
       this.outboundWorker.start();
       this.inboundWorker.start();
       await scheduler.start();
-      this.controlServer.start();
+      await this.controlServer.start();
     } catch (error) {
       await this.stop();
       throw error;

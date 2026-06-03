@@ -17,7 +17,6 @@
  *   GET  /api/workers
  */
 
-import { unlink } from 'node:fs/promises';
 import type { SessionWorkerPool } from './agent/worker-pool.js';
 import type { ScheduledTaskStore } from './db/scheduled-task-store.js';
 import type { SessionStore } from './db/session-store.js';
@@ -86,7 +85,7 @@ export class ControlServer {
     this.workerPool = options.workerPool;
   }
 
-  start(): void {
+  async start(): Promise<void> {
     const fd = systemdFd();
 
     const routes = {
@@ -136,7 +135,7 @@ export class ControlServer {
 
       // Clean up stale socket from a previous run.
       try {
-        Bun.file(socketPath).delete();
+        await Bun.file(socketPath).delete();
       } catch (err) {
         // ENOENT is expected; log anything unexpected.
         console.warn('[control-server] stale socket cleanup failed', { path: socketPath, err });
@@ -158,9 +157,12 @@ export class ControlServer {
     // In dev mode we own the socket; clean it up. Under systemd socket
     // activation RemoveOnStop=yes handles unlink.
     if (this.socketPath) {
-      await unlink(this.socketPath).catch((err) => {
-        console.warn('[control-server] socket unlink on stop failed', { path: this.socketPath, err });
-      });
+      const path = this.socketPath;
+      await Bun.file(path)
+        .delete()
+        .catch((err) => {
+          console.warn('[control-server] socket unlink on stop failed', { path, err });
+        });
       this.socketPath = null;
     }
     console.log('[control-server] stopped');
@@ -297,7 +299,8 @@ export class ControlServer {
   private async handleGetTaskRuns(req: Request): Promise<Response> {
     const id = (req as RoutedRequest).params.id as string;
     const url = new URL(req.url);
-    const limit = Number.parseInt(url.searchParams.get('limit') ?? '50', 10) || 50;
+    const raw = Number.parseInt(url.searchParams.get('limit') ?? '50', 10);
+    const limit = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 500) : 50;
     const runs = await this.taskStore.getRuns(id, limit);
     return json(runs);
   }
