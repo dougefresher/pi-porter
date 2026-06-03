@@ -127,6 +127,15 @@ export class SessionWorkerPool {
     return this.workers.size;
   }
 
+  /** Read-only snapshot for observability (control plane /api/workers). */
+  snapshot(): Array<{ sessionKey: string; state: string }> {
+    const result: Array<{ sessionKey: string; state: string }> = [];
+    for (const [key, entry] of this.workers) {
+      result.push({ sessionKey: key, state: entry.state });
+    }
+    return result;
+  }
+
   // ---- Internal ----
 
   #spawn(key: string, cwd: string): WorkerEntry {

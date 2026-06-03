@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from 'node:util';
+import { runCli } from './cli.js';
 import { loadConfig } from './config.js';
 import { PorterDaemon } from './daemon.js';
 
@@ -78,6 +79,5 @@ if (values['agent-worker']) {
   }
 } else {
   // Default: client CLI mode. Talks to the daemon over a UNIX socket.
-  console.log('porter client (not yet implemented)');
-  process.exit(0);
+  await runCli(Bun.argv);
 }

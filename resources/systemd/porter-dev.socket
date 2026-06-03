@@ -1,0 +1,11 @@
+[Unit]
+Description=Porter control socket (dev)
+
+[Socket]
+ListenStream=%t/porter/porter-dev.sock
+SocketMode=0600
+DirectoryMode=0700
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

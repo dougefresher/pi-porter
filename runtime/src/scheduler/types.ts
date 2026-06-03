@@ -37,3 +37,27 @@ export type UpdateScheduledTaskAfterRun = {
   lastResult: string;
   status?: TaskStatus;
 };
+
+export type NewScheduledTask = {
+  id: string;
+  name: string | null;
+  prompt: string;
+  agentSessionKey: string;
+  reportSessionKey: string | null;
+  workdir: string | null;
+  preHook: string | null;
+  postHook: string | null;
+  scheduleType: ScheduleType;
+  scheduleValue: string;
+};
+
+export type ScheduledTaskRun = {
+  id: number;
+  taskId: string;
+  inboundId: number | null;
+  runAt: Date;
+  durationMs: number | null;
+  status: ScheduledTaskRunStatus;
+  result: string | null;
+  error: string | null;
+};

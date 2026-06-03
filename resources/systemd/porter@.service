@@ -11,6 +11,8 @@ EnvironmentFile=%h/%i/.env
 # Prod unit: packaged install at a fixed path. PATH only affects subprocesses, not ExecStart.
 ExecStart=/usr/bin/porter --serve
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+RuntimeDirectory=porter
+RuntimeDirectoryMode=0700
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

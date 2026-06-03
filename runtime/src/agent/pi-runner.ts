@@ -5,8 +5,10 @@ import { SessionWorkerPool } from './worker-pool.js';
 export class PiAgentRunner implements AgentRunner {
   private cwd: string;
   private promptTimeoutMs: number;
-  private pool: SessionWorkerPool;
   private locks: Map<string, Promise<void>> = new Map();
+
+  /** Exposed for control plane observability (/api/workers). */
+  readonly pool: SessionWorkerPool;
 
   constructor(config: PorterConfig) {
     this.cwd = process.cwd();

@@ -5,4 +5,11 @@ export type { HookResult } from './hooks.js';
 export { runHook } from './hooks.js';
 export { SchedulerRegistry } from './registry.js';
 export { buildSchedulerAgentSessionKey } from './session-keys.js';
-export type { ScheduledTask, ScheduledTaskRunStatus, ScheduleType, TaskStatus } from './types.js';
+export type {
+  NewScheduledTask,
+  ScheduledTask,
+  ScheduledTaskRun,
+  ScheduledTaskRunStatus,
+  ScheduleType,
+  TaskStatus,
+} from './types.js';

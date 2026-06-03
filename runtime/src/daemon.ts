@@ -4,6 +4,7 @@ import { ChannelManager } from './channels/manager.js';
 import { MatrixRuntime } from './channels/matrix/index.js';
 import { TelegramRuntime } from './channels/telegram/index.js';
 import { ensureRuntimeDirs, type PorterConfig } from './config.js';
+import { ControlServer } from './control-server.js';
 import { ChannelWorkdirStore } from './db/channel-workdir-store.js';
 import { closeDb, type Db, getDb } from './db/client.js';
 import { migrate } from './db/migrate.js';
@@ -18,6 +19,7 @@ import { OutboundWorker } from './workers/outbound-worker.js';
 export class PorterDaemon {
   private channels: ChannelManager | null = null;
   private config: PorterConfig;
+  private controlServer: ControlServer | null = null;
   private db: Db | null = null;
   private inboundWorker: InboundWorker | null = null;
   private outboundWorker: OutboundWorker | null = null;
@@ -92,7 +94,16 @@ export class PorterDaemon {
     });
     this.scheduler = scheduler;
 
-    this.inboundWorker = new InboundWorker(bus, sessions, transcripts, new PiAgentRunner(this.config), {
+    const agentRunner = new PiAgentRunner(this.config);
+
+    this.controlServer = new ControlServer({
+      scheduler,
+      taskStore: scheduledTasks,
+      sessionStore: sessions,
+      workerPool: agentRunner.pool,
+    });
+
+    this.inboundWorker = new InboundWorker(bus, sessions, transcripts, agentRunner, {
       stateDir: this.config.stateDir,
       sessionRoot,
       sessionArchiveStore: sessionArchives,
@@ -107,6 +118,7 @@ export class PorterDaemon {
       this.outboundWorker.start();
       this.inboundWorker.start();
       await scheduler.start();
+      this.controlServer.start();
     } catch (error) {
       await this.stop();
       throw error;
@@ -116,6 +128,9 @@ export class PorterDaemon {
   }
 
   async stop(): Promise<void> {
+    await this.controlServer?.stop();
+    this.controlServer = null;
+
     this.scheduler?.stop();
     this.scheduler = null;
 
