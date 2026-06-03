@@ -10,6 +10,7 @@ Boolean env values: `1`, `true`, `yes`, or `on` (case-insensitive). CSV lists ar
 | ---------- | --------- | ------- |
 | `PORTER_STATE_DIR` | `~/.local/state/porter` | Runtime state, Pi sessions, cron logs |
 | `PORTER_CONFIG_DIR` | `~/.config/porter` | Reserved for future config files |
+| `PORTER_SOCKET` | `$XDG_RUNTIME_DIR/porter/porter.sock` | Control plane UNIX socket path (CLI only) |
 | `DATABASE_URL` | — | PostgreSQL connection URL (required) |
 
 ## Agent

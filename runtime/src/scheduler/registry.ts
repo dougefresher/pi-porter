@@ -45,6 +45,43 @@ export class SchedulerRegistry {
     console.log('[scheduler] registry stopped');
   }
 
+  /**
+   * Immediately fire a scheduled task by publishing an inbound event.
+   * Does not affect the existing schedule timer.
+   */
+  async fireNow(taskId: string): Promise<{ ok: boolean; error?: string }> {
+    if (!this.started) return { ok: false, error: 'scheduler not started' };
+
+    const task = await this.store.getById(taskId);
+    if (!task) return { ok: false, error: 'task not found' };
+    if (task.status !== 'active') return { ok: false, error: `task is ${task.status}, not active` };
+
+    const parsed = parseSessionKey(task.agentSessionKey);
+    if (!parsed) return { ok: false, error: `invalid agent session key: ${task.agentSessionKey}` };
+
+    await this.sessions.ensureSession(task.agentSessionKey, parsed);
+
+    await this.bus.publishInbound({
+      sessionKey: task.agentSessionKey,
+      channel: 'scheduler',
+      accountId: 'default',
+      chatId: task.id,
+      senderId: 'scheduler',
+      content: task.prompt,
+      metadata: {
+        scheduled: true,
+        taskId: task.id,
+        taskName: task.name,
+        reportSessionKey: task.reportSessionKey,
+        firedManually: true,
+        ...(task.workdir ? { workdir: task.workdir } : {}),
+      },
+    });
+
+    console.log('[scheduler] manual fire', { taskId: task.id, name: task.name });
+    return { ok: true };
+  }
+
   async refresh(taskId: string): Promise<void> {
     if (!this.started) return;
     this.disarm(taskId);

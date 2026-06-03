@@ -1,0 +1,21 @@
+# Template socket unit paired with porter@.service.
+#
+# Enable alongside the matching service instance:
+#   systemctl --user enable 'porter@projects-me-pi-porter.socket'
+#   systemctl --user enable 'porter@projects-me-pi-porter.service'
+#
+# Systemd creates the socket before the service starts and passes it as fd 3.
+# The daemon detects LISTEN_FDS and uses Bun.serve({ fd: 3 }).
+# RemoveOnStop=yes ensures the socket file is cleaned up on deactivation.
+
+[Unit]
+Description=Porter control socket (%i)
+
+[Socket]
+ListenStream=%t/porter/porter-%i.sock
+SocketMode=0600
+DirectoryMode=0700
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
