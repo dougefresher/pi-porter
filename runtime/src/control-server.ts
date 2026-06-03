@@ -1,8 +1,8 @@
 /**
  * UNIX socket control plane for the porter daemon.
  *
- * Exposes a REST API over HTTP on a systemd-passed file descriptor
- * (socket activation) or a directly-bound UNIX socket in development.
+ * Exposes a REST API over HTTP on a directly-bound UNIX domain socket.
+ * Systemd manages socket directory lifecycle via RuntimeDirectory=porter-%i.
  *
  * Routes:
  *   GET  /api/health
@@ -17,6 +17,7 @@
  *   GET  /api/workers
  */
 
+import type { BunRequest } from 'bun';
 import type { SessionWorkerPool } from './agent/worker-pool.js';
 import type { ScheduledTaskStore } from './db/scheduled-task-store.js';
 import type { SessionStore } from './db/session-store.js';
@@ -27,14 +28,9 @@ import type { NewScheduledTask } from './scheduler/types.js';
 // ---- Types ----
 
 export type ControlServerOptions = {
-  /** File descriptor from systemd socket activation (fd 3). */
-  fd?: number;
-  /** UNIX socket path for direct binding (development fallback). */
-  unix?: string;
   scheduler: SchedulerRegistry;
   taskStore: ScheduledTaskStore;
   sessionStore: SessionStore;
-  /** Optional: worker pool for /api/workers observability. */
   workerPool?: SessionWorkerPool;
 };
 
@@ -55,7 +51,7 @@ function errorJson(message: string, status: number): Response {
 
 export class ControlServer {
   private server: ReturnType<typeof Bun.serve> | null = null;
-  private socketPath: string | null = null; // for dev-mode cleanup
+  private socketPath: string | null = null;
   private scheduler: SchedulerRegistry;
   private taskStore: ScheduledTaskStore;
   private sessionStore: SessionStore;
@@ -69,46 +65,6 @@ export class ControlServer {
   }
 
   async start(): Promise<void> {
-    const fetchHandler: (req: Request) => Response | Promise<Response> = (req) => {
-      const url = new URL(req.url);
-      const id = url.pathname.match(/^\/api\/scheduled-tasks\/([^/]+)/)?.[1];
-
-      // Health
-      if (url.pathname === '/api/health' && req.method === 'GET') return this.handleHealth();
-
-      // Scheduled tasks — collection
-      if (url.pathname === '/api/scheduled-tasks') {
-        if (req.method === 'GET') return this.handleListTasks();
-        if (req.method === 'POST') return this.handleCreateTask(req);
-      }
-
-      // Scheduled tasks — single
-      if (id && url.pathname === `/api/scheduled-tasks/${id}`) {
-        if (req.method === 'GET') return this.handleGetTask(id);
-        if (req.method === 'DELETE') return this.handleDeleteTask(id);
-      }
-      if (id && url.pathname === `/api/scheduled-tasks/${id}/pause` && req.method === 'POST')
-        return this.handlePauseTask(id);
-      if (id && url.pathname === `/api/scheduled-tasks/${id}/resume` && req.method === 'POST')
-        return this.handleResumeTask(id);
-      if (id && url.pathname === `/api/scheduled-tasks/${id}/fire` && req.method === 'POST')
-        return this.handleFireTask(id);
-      if (id && url.pathname === `/api/scheduled-tasks/${id}/runs` && req.method === 'GET') {
-        const limit = Number.parseInt(url.searchParams.get('limit') ?? '50', 10);
-        return this.handleGetTaskRuns(id, limit);
-      }
-
-      // Workers
-      if (url.pathname === '/api/workers' && req.method === 'GET') return this.handleWorkers();
-
-      return errorJson('not found', 404);
-    };
-
-    const onError = (err: Error) => {
-      console.error('[control-server] unhandled error', { error: err });
-      return errorJson('internal server error', 500);
-    };
-
     const socketPath =
       process.env.PORTER_SOCKET ||
       (() => {
@@ -118,17 +74,50 @@ export class ControlServer {
         return `${base}/porter.sock`;
       })();
 
-    // Clean up stale socket from a previous run.
     try {
       await Bun.file(socketPath).delete();
     } catch (err) {
-      // ENOENT is expected; log anything unexpected.
       console.warn('[control-server] stale socket cleanup failed', { path: socketPath, err });
     }
 
     this.socketPath = socketPath;
     console.log('[control-server] binding on unix socket', { path: socketPath });
-    this.server = Bun.serve({ unix: socketPath, fetch: fetchHandler, error: onError });
+
+    this.server = Bun.serve({
+      unix: socketPath,
+      routes: {
+        '/api/health': {
+          GET: () => this.handleHealth(),
+        },
+        '/api/scheduled-tasks': {
+          GET: () => this.handleListTasks(),
+          POST: (req) => this.handleCreateTask(req),
+        },
+        '/api/scheduled-tasks/:id': {
+          GET: (req) => this.handleGetTask(req),
+          DELETE: (req) => this.handleDeleteTask(req),
+        },
+        '/api/scheduled-tasks/:id/pause': {
+          POST: (req) => this.handlePauseTask(req),
+        },
+        '/api/scheduled-tasks/:id/resume': {
+          POST: (req) => this.handleResumeTask(req),
+        },
+        '/api/scheduled-tasks/:id/fire': {
+          POST: (req) => this.handleFireTask(req),
+        },
+        '/api/scheduled-tasks/:id/runs': {
+          GET: (req) => this.handleGetTaskRuns(req),
+        },
+        '/api/workers': {
+          GET: () => this.handleWorkers(),
+        },
+      },
+      error: (err: Error) => {
+        console.error('[control-server] unhandled error', { error: err });
+        return errorJson('internal server error', 500);
+      },
+    });
 
     console.log('[control-server] started');
   }
@@ -138,8 +127,6 @@ export class ControlServer {
       await this.server.stop();
       this.server = null;
     }
-    // In dev mode we own the socket; clean it up. Under systemd socket
-    // activation RemoveOnStop=yes handles unlink.
     if (this.socketPath) {
       const path = this.socketPath;
       await Bun.file(path)
@@ -169,13 +156,13 @@ export class ControlServer {
     return json(tasks);
   }
 
-  private async handleGetTask(id: string): Promise<Response> {
-    const task = await this.taskStore.getById(id);
+  private async handleGetTask(req: BunRequest<'/api/scheduled-tasks/:id'>): Promise<Response> {
+    const task = await this.taskStore.getById(req.params.id);
     if (!task) return errorJson('task not found', 404);
     return json(task);
   }
 
-  private async handleCreateTask(req: Request): Promise<Response> {
+  private async handleCreateTask(req: BunRequest<'/api/scheduled-tasks'>): Promise<Response> {
     let body: unknown;
     try {
       body = await req.json();
@@ -200,7 +187,6 @@ export class ControlServer {
       scheduleValue: String(input.scheduleValue),
     };
 
-    // Ensure the session row exists so the FK constraint passes.
     const parsed = parseSessionKey(newTask.agentSessionKey);
     if (!parsed) return errorJson('invalid agentSessionKey format', 400);
     await this.sessionStore.ensureSession(newTask.agentSessionKey, parsed);
@@ -225,21 +211,23 @@ export class ControlServer {
     }
   }
 
-  private async handleDeleteTask(id: string): Promise<Response> {
+  private async handleDeleteTask(req: BunRequest<'/api/scheduled-tasks/:id'>): Promise<Response> {
+    const { id } = req.params;
+
     const task = await this.taskStore.getById(id);
     if (!task) return errorJson('task not found', 404);
 
-    // Pause (disarms the timer) before deleting from DB.
     await this.taskStore.setStatus(id, 'paused');
     await this.scheduler.refresh(id);
 
     const deleted = await this.taskStore.delete(id);
-    if (!deleted) return errorJson('task not found', 404); // race
+    if (!deleted) return errorJson('task not found', 404);
     console.log('[control-server] deleted task', { taskId: id });
     return new Response(null, { status: 204 });
   }
 
-  private async handlePauseTask(id: string): Promise<Response> {
+  private async handlePauseTask(req: BunRequest<'/api/scheduled-tasks/:id/pause'>): Promise<Response> {
+    const { id } = req.params;
     const task = await this.taskStore.getById(id);
     if (!task) return errorJson('task not found', 404);
     if (task.status !== 'active') {
@@ -247,13 +235,13 @@ export class ControlServer {
     }
 
     await this.taskStore.setStatus(id, 'paused');
-    // refresh disarms the paused task's handle since status != 'active'
     await this.scheduler.refresh(id);
     console.log('[control-server] paused task', { taskId: id });
     return json({ id, status: 'paused' });
   }
 
-  private async handleResumeTask(id: string): Promise<Response> {
+  private async handleResumeTask(req: BunRequest<'/api/scheduled-tasks/:id/resume'>): Promise<Response> {
+    const { id } = req.params;
     const task = await this.taskStore.getById(id);
     if (!task) return errorJson('task not found', 404);
     if (task.status !== 'paused') {
@@ -266,7 +254,8 @@ export class ControlServer {
     return json({ id, status: 'active' });
   }
 
-  private async handleFireTask(id: string): Promise<Response> {
+  private async handleFireTask(req: BunRequest<'/api/scheduled-tasks/:id/fire'>): Promise<Response> {
+    const { id } = req.params;
     const result = await this.scheduler.fireNow(id);
     if (!result.ok) {
       return errorJson(result.error ?? 'failed to fire task', result.error === 'task not found' ? 404 : 409);
@@ -274,9 +263,12 @@ export class ControlServer {
     return json({ id, fired: true });
   }
 
-  private async handleGetTaskRuns(id: string, limit: number): Promise<Response> {
-    const clamped = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 500) : 50;
-    const runs = await this.taskStore.getRuns(id, clamped);
+  private async handleGetTaskRuns(req: BunRequest<'/api/scheduled-tasks/:id/runs'>): Promise<Response> {
+    const { id } = req.params;
+    const url = new URL(req.url);
+    const raw = Number.parseInt(url.searchParams.get('limit') ?? '50', 10);
+    const limit = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 500) : 50;
+    const runs = await this.taskStore.getRuns(id, limit);
     return json(runs);
   }
 
