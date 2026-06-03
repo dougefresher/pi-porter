@@ -24,10 +24,6 @@ import { parseSessionKey } from './routing/session-key.js';
 import type { SchedulerRegistry } from './scheduler/registry.js';
 import type { NewScheduledTask } from './scheduler/types.js';
 
-/** Bun extends Request with route params. Use `any` because TS Record access is `string | undefined`. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type RoutedRequest = Request & { params: any };
-
 // ---- Types ----
 
 export type ControlServerOptions = {
@@ -55,19 +51,6 @@ function errorJson(message: string, status: number): Response {
   return json({ error: message }, status);
 }
 
-/**
- * Detect systemd socket activation.
- *
- * systemd sets LISTEN_FDS=1 and LISTEN_PID=<our pid>. The first
- * (and typically only) socket fd is 3 (SD_LISTEN_FDS_START).
- */
-function systemdFd(): number | undefined {
-  if (process.env.LISTEN_PID !== String(process.pid)) return undefined;
-  const count = Number.parseInt(process.env.LISTEN_FDS ?? '0', 10);
-  if (count < 1) return undefined;
-  return 3;
-}
-
 // ---- ControlServer ----
 
 export class ControlServer {
@@ -86,65 +69,66 @@ export class ControlServer {
   }
 
   async start(): Promise<void> {
-    const fd = systemdFd();
+    const fetchHandler: (req: Request) => Response | Promise<Response> = (req) => {
+      const url = new URL(req.url);
+      const id = url.pathname.match(/^\/api\/scheduled-tasks\/([^/]+)/)?.[1];
 
-    const routes = {
-      '/api/health': {
-        GET: () => this.handleHealth(),
-      },
-      '/api/scheduled-tasks': {
-        GET: () => this.handleListTasks(),
-        POST: (req: Request) => this.handleCreateTask(req),
-      },
-      '/api/scheduled-tasks/:id': {
-        GET: (req: Request) => this.handleGetTask(req),
-        DELETE: (req: Request) => this.handleDeleteTask(req),
-      },
-      '/api/scheduled-tasks/:id/pause': {
-        POST: (req: Request) => this.handlePauseTask(req),
-      },
-      '/api/scheduled-tasks/:id/resume': {
-        POST: (req: Request) => this.handleResumeTask(req),
-      },
-      '/api/scheduled-tasks/:id/fire': {
-        POST: (req: Request) => this.handleFireTask(req),
-      },
-      '/api/scheduled-tasks/:id/runs': {
-        GET: (req: Request) => this.handleGetTaskRuns(req),
-      },
-      '/api/workers': {
-        GET: () => this.handleWorkers(),
-      },
-    } as const;
+      // Health
+      if (url.pathname === '/api/health' && req.method === 'GET') return this.handleHealth();
+
+      // Scheduled tasks — collection
+      if (url.pathname === '/api/scheduled-tasks') {
+        if (req.method === 'GET') return this.handleListTasks();
+        if (req.method === 'POST') return this.handleCreateTask(req);
+      }
+
+      // Scheduled tasks — single
+      if (id && url.pathname === `/api/scheduled-tasks/${id}`) {
+        if (req.method === 'GET') return this.handleGetTask(id);
+        if (req.method === 'DELETE') return this.handleDeleteTask(id);
+      }
+      if (id && url.pathname === `/api/scheduled-tasks/${id}/pause` && req.method === 'POST')
+        return this.handlePauseTask(id);
+      if (id && url.pathname === `/api/scheduled-tasks/${id}/resume` && req.method === 'POST')
+        return this.handleResumeTask(id);
+      if (id && url.pathname === `/api/scheduled-tasks/${id}/fire` && req.method === 'POST')
+        return this.handleFireTask(id);
+      if (id && url.pathname === `/api/scheduled-tasks/${id}/runs` && req.method === 'GET') {
+        const limit = Number.parseInt(url.searchParams.get('limit') ?? '50', 10);
+        return this.handleGetTaskRuns(id, limit);
+      }
+
+      // Workers
+      if (url.pathname === '/api/workers' && req.method === 'GET') return this.handleWorkers();
+
+      return errorJson('not found', 404);
+    };
 
     const onError = (err: Error) => {
       console.error('[control-server] unhandled error', { error: err });
       return errorJson('internal server error', 500);
     };
 
-    if (fd !== undefined) {
-      console.log('[control-server] binding on systemd socket activation fd', { fd });
-      // Bun types for `fd` + `routes` together are incomplete; cast through any.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.server = Bun.serve({ fd, routes, error: onError } as any);
-    } else {
-      const runtimeDir = process.env.XDG_RUNTIME_DIR;
-      const stateDir = process.env.PORTER_STATE_DIR || `${process.env.HOME}/.local/state/porter`;
-      const base = runtimeDir ? `${runtimeDir}/porter` : stateDir;
-      const socketPath = `${base}/porter.sock`;
+    const socketPath =
+      process.env.PORTER_SOCKET ||
+      (() => {
+        const runtimeDir = process.env.XDG_RUNTIME_DIR;
+        const stateDir = process.env.PORTER_STATE_DIR || `${process.env.HOME}/.local/state/porter`;
+        const base = runtimeDir ? `${runtimeDir}/porter` : stateDir;
+        return `${base}/porter.sock`;
+      })();
 
-      // Clean up stale socket from a previous run.
-      try {
-        await Bun.file(socketPath).delete();
-      } catch (err) {
-        // ENOENT is expected; log anything unexpected.
-        console.warn('[control-server] stale socket cleanup failed', { path: socketPath, err });
-      }
-
-      this.socketPath = socketPath;
-      console.log('[control-server] binding on unix socket', { path: socketPath });
-      this.server = Bun.serve({ unix: socketPath, routes, error: onError });
+    // Clean up stale socket from a previous run.
+    try {
+      await Bun.file(socketPath).delete();
+    } catch (err) {
+      // ENOENT is expected; log anything unexpected.
+      console.warn('[control-server] stale socket cleanup failed', { path: socketPath, err });
     }
+
+    this.socketPath = socketPath;
+    console.log('[control-server] binding on unix socket', { path: socketPath });
+    this.server = Bun.serve({ unix: socketPath, fetch: fetchHandler, error: onError });
 
     console.log('[control-server] started');
   }
@@ -185,8 +169,7 @@ export class ControlServer {
     return json(tasks);
   }
 
-  private async handleGetTask(req: Request): Promise<Response> {
-    const id = (req as RoutedRequest).params.id as string;
+  private async handleGetTask(id: string): Promise<Response> {
     const task = await this.taskStore.getById(id);
     if (!task) return errorJson('task not found', 404);
     return json(task);
@@ -242,9 +225,7 @@ export class ControlServer {
     }
   }
 
-  private async handleDeleteTask(req: Request): Promise<Response> {
-    const id = (req as RoutedRequest).params.id as string;
-
+  private async handleDeleteTask(id: string): Promise<Response> {
     const task = await this.taskStore.getById(id);
     if (!task) return errorJson('task not found', 404);
 
@@ -258,8 +239,7 @@ export class ControlServer {
     return new Response(null, { status: 204 });
   }
 
-  private async handlePauseTask(req: Request): Promise<Response> {
-    const id = (req as RoutedRequest).params.id as string;
+  private async handlePauseTask(id: string): Promise<Response> {
     const task = await this.taskStore.getById(id);
     if (!task) return errorJson('task not found', 404);
     if (task.status !== 'active') {
@@ -273,8 +253,7 @@ export class ControlServer {
     return json({ id, status: 'paused' });
   }
 
-  private async handleResumeTask(req: Request): Promise<Response> {
-    const id = (req as RoutedRequest).params.id as string;
+  private async handleResumeTask(id: string): Promise<Response> {
     const task = await this.taskStore.getById(id);
     if (!task) return errorJson('task not found', 404);
     if (task.status !== 'paused') {
@@ -287,8 +266,7 @@ export class ControlServer {
     return json({ id, status: 'active' });
   }
 
-  private async handleFireTask(req: Request): Promise<Response> {
-    const id = (req as RoutedRequest).params.id as string;
+  private async handleFireTask(id: string): Promise<Response> {
     const result = await this.scheduler.fireNow(id);
     if (!result.ok) {
       return errorJson(result.error ?? 'failed to fire task', result.error === 'task not found' ? 404 : 409);
@@ -296,12 +274,9 @@ export class ControlServer {
     return json({ id, fired: true });
   }
 
-  private async handleGetTaskRuns(req: Request): Promise<Response> {
-    const id = (req as RoutedRequest).params.id as string;
-    const url = new URL(req.url);
-    const raw = Number.parseInt(url.searchParams.get('limit') ?? '50', 10);
-    const limit = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 500) : 50;
-    const runs = await this.taskStore.getRuns(id, limit);
+  private async handleGetTaskRuns(id: string, limit: number): Promise<Response> {
+    const clamped = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 500) : 50;
+    const runs = await this.taskStore.getRuns(id, clamped);
     return json(runs);
   }
 

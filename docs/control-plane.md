@@ -18,30 +18,37 @@ The control server runs inside the daemon process alongside channels, the
 inbound/outbound workers, and the scheduler registry. No separate process, no
 TCP port.
 
-## Socket activation
+## Socket lifecycle
 
-In production (systemd template pair):
+Systemd manages the socket directory via `RuntimeDirectory=porter-%i` in the
+service unit. The daemon binds the socket itself -- systemd socket activation
+(`Bun.serve({ fd })`) is not used because the feature never shipped in Bun
+(see [oven-sh/bun#2852](https://github.com/oven-sh/bun/pull/2852)).
 
 ```ini
-# porter@.socket
-ListenStream=%t/porter/porter-%i.sock
-SocketMode=0600
+# porter@.service
+Environment=PORTER_SOCKET=%t/porter-%i/porter.sock
+RuntimeDirectory=porter-%i
+RuntimeDirectoryMode=0700
 ```
 
-Systemd creates the socket before the service starts and passes it as fd 3.
-The daemon detects `LISTEN_FDS=1` and calls `Bun.serve({ fd: 3 })`.
-`RemoveOnStop=yes` handles cleanup.
+Each template instance gets its own directory:
 
-In development (no socket unit, `bun run`):
+```
+porter@projects-me-pi-porter  →  /run/user/1000/porter-projects-me-pi-porter/porter.sock
+porter-dev                    →  /run/user/1000/porter-dev/porter.sock
+```
+
+In development (`bun run`, no systemd):
 
 ```bash
-# Daemon binds directly:
 bun run runtime/src/index.ts --serve
-# Socket created at $XDG_RUNTIME_DIR/porter/porter.sock (fallback: ~/.local/state/porter/porter.sock)
+# Falls back to $XDG_RUNTIME_DIR/porter/porter.sock
+#            or ~/.local/state/porter/porter.sock
 ```
 
-The CLI locates the socket via `PORTER_SOCKET` env var with a fallback to
-`$XDG_RUNTIME_DIR/porter/porter.sock`.
+The daemon prefers `PORTER_SOCKET` from the environment; the CLI uses the
+same variable with the same fallback.
 
 ## API Reference
 
@@ -196,8 +203,8 @@ Worker states: `booting` (initializing Pi session), `ready` (idle), `busy`
 ## CLI
 
 ```bash
-# Set socket path for template instances:
-export PORTER_SOCKET=$XDG_RUNTIME_DIR/porter/porter-projects-me-pi-porter.sock
+# Socket path is set by the systemd service unit; export manually for dev:
+export PORTER_SOCKET=$XDG_RUNTIME_DIR/porter-projects-me-pi-porter/porter.sock
 
 porter task list
 porter task get morning-brief

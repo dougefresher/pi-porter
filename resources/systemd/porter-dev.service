@@ -11,6 +11,9 @@ EnvironmentFile=%h/workspace/.env
 # Dev unit: run the locally built binary. PATH is for agent subprocesses (bun, tools), not ExecStart.
 ExecStart=%h/.local/bin/porter --serve
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PORTER_SOCKET=%t/porter-dev/porter.sock
+RuntimeDirectory=porter-dev
+RuntimeDirectoryMode=0700
 Restart=on-failure
 RestartSec=10s
 RestartSteps=4
