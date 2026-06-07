@@ -1,12 +1,23 @@
 /**
- * Porter client CLI. Talks to the daemon over a UNIX socket.
+ * Porter CLI — cmd-ts command definitions.
  *
- * Socket location (first found wins):
- *   1. PORTER_SOCKET env var
- *   2. $XDG_RUNTIME_DIR/porter/porter.sock
- *   3. $PORTER_STATE_DIR/porter.sock
- *   4. ~/.local/state/porter/porter.sock
+ * Commands:
+ *   porter serve                  Start the daemon
+ *   porter status                 Daemon health and stats
+ *   porter workers                Worker pool snapshot
+ *   porter task list              List all scheduled tasks
+ *   porter task get <id>          Get task details
+ *   porter task create            Create a new scheduled task
+ *   porter task delete <id>       Delete a task
+ *   porter task pause <id>        Pause a task
+ *   porter task resume <id>       Resume a paused task
+ *   porter task fire <id>         Trigger a task immediately
+ *   porter task runs <id>         Show recent run history
  */
+
+import { binary, command, number, oneOf, option, optional, positional, run, string, subcommands } from 'cmd-ts';
+
+// ---- Socket path ----
 
 function socketPath(): string {
   if (process.env.PORTER_SOCKET) return process.env.PORTER_SOCKET;
@@ -15,6 +26,8 @@ function socketPath(): string {
   const stateDir = process.env.PORTER_STATE_DIR || `${process.env.HOME}/.local/state/porter`;
   return `${stateDir}/porter.sock`;
 }
+
+// ---- API helpers ----
 
 async function apiFetch(path: string, init?: RequestInit): Promise<unknown> {
   const url = `http://localhost${path}`;
@@ -26,8 +39,10 @@ async function apiFetch(path: string, init?: RequestInit): Promise<unknown> {
       const parsed = JSON.parse(body);
       if (parsed.error) message = parsed.error;
     } catch (err) {
-      // Response body is not JSON; use raw status text.
-      console.warn('[cli] failed to parse error response body', { status: res.status, err });
+      console.warn('[cli] failed to parse error response body', {
+        status: res.status,
+        err,
+      });
     }
     throw new Error(message);
   }
@@ -39,235 +54,303 @@ function printJson(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 
-// ---- Commands ----
+// ---- Task subcommands ----
 
-async function cmdList(): Promise<void> {
-  const tasks = await apiFetch('/api/scheduled-tasks');
-  printJson(tasks);
-}
+const taskList = command({
+  name: 'list',
+  description: 'List all scheduled tasks',
+  args: {},
+  handler: async () => {
+    const tasks = await apiFetch('/api/scheduled-tasks');
+    printJson(tasks);
+  },
+});
 
-async function cmdGet(id: string): Promise<void> {
-  const task = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}`);
-  printJson(task);
-}
+const taskGet = command({
+  name: 'get',
+  description: 'Get task details',
+  args: {
+    id: positional({ displayName: 'id', type: string }),
+  },
+  handler: async ({ id }) => {
+    const task = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}`);
+    printJson(task);
+  },
+});
 
-async function cmdCreate(opts: Record<string, string | undefined>): Promise<void> {
-  const id = opts.id;
-  if (!id) throw new Error('--id is required');
+const scheduleType = oneOf(['cron', 'interval', 'once'] as const);
 
-  let scheduleType: string;
-  let scheduleValue: string;
-  if (opts.cron) {
-    scheduleType = 'cron';
-    scheduleValue = opts.cron;
-  } else if (opts.interval) {
-    scheduleType = 'interval';
-    scheduleValue = opts.interval;
-  } else if (opts.once !== undefined) {
-    scheduleType = 'once';
-    scheduleValue = opts.once || '0';
-  } else {
-    throw new Error('one of --cron, --interval, or --once is required');
-  }
+const taskCreate = command({
+  name: 'create',
+  description: 'Create a new scheduled task',
+  examples: [
+    {
+      description: 'Schedule a daily cron task',
+      command:
+        "porter task create --id daily-report --schedule cron --value '0 9 * * *' --prompt 'Generate daily report' --session-key main:telegram:default:dm:123456",
+    },
+    {
+      description: 'Create a one-shot task',
+      command:
+        "porter task create --id cleanup --schedule once --prompt 'Clean up temp files' --session-key main:telegram:default:dm:123456",
+    },
+    {
+      description: 'Create a task with a report target',
+      command:
+        "porter task create --id monitor --schedule interval --value 3600000 --prompt 'Check health' --session-key main:telegram:default:dm:123456 --report-key main:telegram:default:dm:123456",
+    },
+  ],
+  args: {
+    id: option({
+      type: string,
+      long: 'id',
+      description: 'Unique task identifier (slug)',
+    }),
+    prompt: option({
+      type: string,
+      long: 'prompt',
+      description: 'Prompt to send to the agent',
+    }),
+    sessionKey: option({
+      type: string,
+      long: 'session-key',
+      description: 'Agent session key (e.g. main:telegram:default:dm:123456)',
+    }),
+    schedule: option({
+      type: scheduleType,
+      long: 'schedule',
+      short: 's',
+      description: 'Schedule type: cron, interval, or once',
+    }),
+    value: option({
+      type: optional(string),
+      long: 'value',
+      description: 'Schedule value: cron expression or interval in milliseconds (not needed for --schedule once)',
+    }),
+    name: option({
+      type: optional(string),
+      long: 'name',
+    }),
+    reportKey: option({
+      type: optional(string),
+      long: 'report-key',
+    }),
+    workdir: option({
+      type: optional(string),
+      long: 'workdir',
+    }),
+    preHook: option({
+      type: optional(string),
+      long: 'pre-hook',
+    }),
+    postHook: option({
+      type: optional(string),
+      long: 'post-hook',
+    }),
+  },
+  handler: async (args) => {
+    if ((args.schedule === 'cron' || args.schedule === 'interval') && !args.value) {
+      throw new Error(`--value is required when --schedule=${args.schedule}`);
+    }
 
-  const body: Record<string, unknown> = {
-    id,
-    scheduleType,
-    scheduleValue,
-    prompt: opts.prompt ?? '',
-    agentSessionKey: opts['session-key'] ?? '',
-  };
-  if (opts.name !== undefined) body.name = opts.name || null;
-  if (opts['report-key'] !== undefined) body.reportSessionKey = opts['report-key'] || null;
-  if (opts.workdir !== undefined) body.workdir = opts.workdir || null;
-  if (opts['pre-hook'] !== undefined) body.preHook = opts['pre-hook'] || null;
-  if (opts['post-hook'] !== undefined) body.postHook = opts['post-hook'] || null;
+    const body: Record<string, unknown> = {
+      id: args.id,
+      prompt: args.prompt,
+      agentSessionKey: args.sessionKey,
+      scheduleType: args.schedule,
+      scheduleValue: args.schedule === 'once' ? '0' : args.value,
+    };
+    if (args.name !== undefined) body.name = args.name;
+    if (args.reportKey !== undefined) body.reportSessionKey = args.reportKey;
+    if (args.workdir !== undefined) body.workdir = args.workdir;
+    if (args.preHook !== undefined) body.preHook = args.preHook;
+    if (args.postHook !== undefined) body.postHook = args.postHook;
 
-  const task = await apiFetch('/api/scheduled-tasks', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  printJson(task);
-}
+    const task = await apiFetch('/api/scheduled-tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    printJson(task);
+  },
+});
 
-async function cmdDelete(id: string): Promise<void> {
-  await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  console.log(`deleted task ${id}`);
-}
+const taskDelete = command({
+  name: 'delete',
+  description: 'Delete a task',
+  args: {
+    id: positional({ displayName: 'id', type: string }),
+  },
+  handler: async ({ id }) => {
+    await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    console.log(`deleted task ${id}`);
+  },
+});
 
-async function cmdPause(id: string): Promise<void> {
-  const result = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}/pause`, { method: 'POST' });
-  printJson(result);
-}
+const taskPause = command({
+  name: 'pause',
+  description: 'Pause a task',
+  args: {
+    id: positional({ displayName: 'id', type: string }),
+  },
+  handler: async ({ id }) => {
+    const result = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}/pause`, { method: 'POST' });
+    printJson(result);
+  },
+});
 
-async function cmdResume(id: string): Promise<void> {
-  const result = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}/resume`, { method: 'POST' });
-  printJson(result);
-}
+const taskResume = command({
+  name: 'resume',
+  description: 'Resume a paused task',
+  args: {
+    id: positional({ displayName: 'id', type: string }),
+  },
+  handler: async ({ id }) => {
+    const result = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}/resume`, { method: 'POST' });
+    printJson(result);
+  },
+});
 
-async function cmdFire(id: string): Promise<void> {
-  const result = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}/fire`, { method: 'POST' });
-  printJson(result);
-}
+const taskFire = command({
+  name: 'fire',
+  description: 'Trigger a task immediately',
+  args: {
+    id: positional({ displayName: 'id', type: string }),
+  },
+  handler: async ({ id }) => {
+    const result = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}/fire`, { method: 'POST' });
+    printJson(result);
+  },
+});
 
-async function cmdRuns(id: string): Promise<void> {
-  const runs = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}/runs`);
-  printJson(runs);
-}
+const taskRuns = command({
+  name: 'runs',
+  description: 'Show recent run history for a task',
+  args: {
+    id: positional({ displayName: 'id', type: string }),
+    limit: option({
+      type: optional(number),
+      long: 'limit',
+      description: 'Max runs to return (default: 50, max: 500)',
+    }),
+  },
+  handler: async ({ id, limit }) => {
+    const query = limit != null ? `?limit=${limit}` : '';
+    const runs = await apiFetch(`/api/scheduled-tasks/${encodeURIComponent(id)}/runs${query}`);
+    printJson(runs);
+  },
+});
 
-async function cmdStatus(): Promise<void> {
-  const health = await apiFetch('/api/health');
-  printJson(health);
-}
+const task = subcommands({
+  name: 'task',
+  description: 'Manage scheduled tasks',
+  cmds: {
+    list: taskList,
+    get: taskGet,
+    create: taskCreate,
+    delete: taskDelete,
+    pause: taskPause,
+    resume: taskResume,
+    fire: taskFire,
+    runs: taskRuns,
+  },
+});
 
-// ---- Entry ----
+// ---- Top-level commands ----
+
+const statusCmd = command({
+  name: 'status',
+  description: 'Show daemon health and stats',
+  args: {},
+  handler: async () => {
+    const health = await apiFetch('/api/health');
+    printJson(health);
+  },
+});
+
+const workersCmd = command({
+  name: 'workers',
+  description: 'Show agent worker pool snapshot',
+  args: {},
+  handler: async () => {
+    const data = await apiFetch('/api/workers');
+    printJson(data);
+  },
+});
+
+const agentWorkerCmd = command({
+  name: 'agent-worker',
+  description: 'Internal: long-lived agent worker child process (spawned by daemon)',
+  args: {},
+  handler: async () => {
+    await import('./agent/agent-worker.js');
+    // agent-worker.ts registers IPC handlers and a keep-alive interval.
+    // The process stays alive until the parent disconnects or sends SIGTERM.
+  },
+});
+
+const serveCmd = command({
+  name: 'serve',
+  description: 'Start the porter daemon',
+  args: {},
+  handler: async () => {
+    // Dynamic import to avoid loading daemon code for client-only commands.
+    const { PorterDaemon } = await import('./daemon.js');
+    const { loadConfig } = await import('./config.js');
+
+    const daemon = new PorterDaemon(loadConfig());
+    let stopping = false;
+
+    async function stop(signal: string): Promise<void> {
+      if (stopping) return;
+      stopping = true;
+      console.log(`[porter] received ${signal}; shutting down`);
+      await daemon.stop();
+      process.exit(0);
+    }
+
+    process.on('SIGINT', () => {
+      stop('SIGINT').catch((error) => {
+        console.error('[porter] shutdown failed', error);
+        process.exit(1);
+      });
+    });
+    process.on('SIGTERM', () => {
+      stop('SIGTERM').catch((error) => {
+        console.error('[porter] shutdown failed', error);
+        process.exit(1);
+      });
+    });
+
+    try {
+      await daemon.start();
+    } catch (error) {
+      console.error('[porter] fatal startup error', error);
+      await daemon.stop().catch((err) => {
+        console.warn('[porter] cleanup after startup failure failed', { err });
+      });
+      process.exit(1);
+    }
+  },
+});
+
+// ---- Exported entry ----
+
+const app = subcommands({
+  name: 'porter',
+  version: '0.0.1',
+  description: 'Personal assistant daemon',
+  cmds: {
+    serve: serveCmd,
+    status: statusCmd,
+    workers: workersCmd,
+    'agent-worker': agentWorkerCmd,
+    task,
+  },
+});
 
 export async function runCli(argv: string[]): Promise<void> {
-  // argv = ['bun', 'index.ts', 'task', 'list', ...]  — strip runtime prefix
-  const args = argv.slice(2);
-
-  if (args.length === 0 || args[0] === 'help' || args[0] === '--help' || args[0] === '-h') {
-    printHelp();
-    return;
-  }
-
-  const subcommand = args[0];
-  const rest = args.slice(1);
-
-  try {
-    switch (subcommand) {
-      case 'task':
-        await handleTask(rest);
-        break;
-      case 'status':
-        await cmdStatus();
-        break;
-      default:
-        console.error(`unknown command: ${subcommand}`);
-        console.error('run `porter help` for usage');
-        process.exit(1);
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('ConnectionRefused')) {
-      console.error('daemon not running or socket not found');
-      console.error(`  socket: ${socketPath()}`);
-    } else {
-      console.error(error instanceof Error ? error.message : String(error));
-    }
-    process.exit(1);
-  }
-}
-
-function handleTask(args: string[]): Promise<void> {
-  if (args.length === 0) {
-    console.error('porter task: missing subcommand (list, get, create, delete, pause, resume, fire, runs)');
-    process.exit(1);
-  }
-
-  const sub = args[0];
-  const subArgs = args.slice(1);
-
-  switch (sub) {
-    case 'list':
-      return cmdList();
-    case 'get':
-      return requireArg(subArgs, 'id').then((id) => cmdGet(id));
-    case 'create':
-      return cmdCreate(parseCreateArgs(subArgs));
-    case 'delete':
-      return requireArg(subArgs, 'id').then((id) => cmdDelete(id));
-    case 'pause':
-      return requireArg(subArgs, 'id').then((id) => cmdPause(id));
-    case 'resume':
-      return requireArg(subArgs, 'id').then((id) => cmdResume(id));
-    case 'fire':
-      return requireArg(subArgs, 'id').then((id) => cmdFire(id));
-    case 'runs':
-      return requireArg(subArgs, 'id').then((id) => cmdRuns(id));
-    default:
-      console.error(`porter task: unknown subcommand: ${sub}`);
-      process.exit(1);
-  }
-}
-
-function requireArg(args: string[], name: string): Promise<string> {
-  if (args.length === 0) {
-    console.error(`missing required argument: ${name}`);
-    process.exit(1);
-  }
-  return Promise.resolve(args[0]!);
-}
-
-const VALUE_FLAGS = new Set([
-  '--id',
-  '--name',
-  '--cron',
-  '--interval',
-  '--prompt',
-  '--session-key',
-  '--report-key',
-  '--workdir',
-  '--pre-hook',
-  '--post-hook',
-]);
-const BOOL_FLAGS = new Set(['--once']);
-
-function parseCreateArgs(args: string[]): Record<string, string | undefined> {
-  const opts: Record<string, string | undefined> = {};
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i]!;
-    if (VALUE_FLAGS.has(arg)) {
-      opts[arg.slice(2)] = args[++i] ?? '';
-    } else if (BOOL_FLAGS.has(arg)) {
-      opts[arg.slice(2)] = '';
-      i++;
-    } else {
-      i++;
-    }
-  }
-  return opts;
-}
-
-function printHelp(): void {
-  console.log(
-    'porter - Personal assistant daemon\n\n' +
-      'Usage:\n' +
-      '  porter                Client CLI (default)\n' +
-      '  porter --serve        Start the daemon\n' +
-      '  porter --help         Show help\n\n' +
-      'Client commands:\n' +
-      '  porter task list                  List all scheduled tasks\n' +
-      '  porter task get <id>              Get task details\n' +
-      '  porter task create ...            Create a new task\n' +
-      '  porter task delete <id>           Delete a task\n' +
-      '  porter task pause <id>            Pause a task\n' +
-      '  porter task resume <id>           Resume a paused task\n' +
-      '  porter task fire <id>             Trigger a task immediately\n' +
-      '  porter task runs <id>             Show recent run history\n' +
-      '  porter status                     Daemon health and stats\n\n' +
-      'Task create options:\n' +
-      '  --id <slug>           Required: unique task identifier\n' +
-      '  --prompt <text>       Required: prompt to send to the agent\n' +
-      '  --session-key <key>   Required: agent session key (e.g. main:telegram:default:dm:123456)\n' +
-      '  --cron <expr>         Cron expression (e.g. "0 9 * * *")\n' +
-      '  --interval <ms>       Interval in milliseconds\n' +
-      '  --once                One-shot task (fires immediately on create)\n' +
-      '  --name <name>         Human-readable name\n' +
-      '  --report-key <key>    Session key for reporting results\n' +
-      '  --workdir <path>      Working directory for the agent\n' +
-      '  --pre-hook <cmd>      Shell command to run before the agent\n' +
-      '  --post-hook <cmd>     Shell command to run after the agent\n\n' +
-      'Internal (spawned by daemon):\n' +
-      '  porter --agent-worker  Run as a long-lived agent worker process\n\n' +
-      'Environment:\n' +
-      '  DATABASE_URL                           PostgreSQL connection URL\n' +
-      '  PORTER_TELEGRAM_ENABLED=1              Enable Telegram long polling\n' +
-      '  PORTER_TELEGRAM_BOT_TOKEN=<token>      Telegram bot token\n' +
-      '  PORTER_TELEGRAM_ALLOWED_SENDERS=<ids>  Comma-separated numeric sender IDs; * allows all\n' +
-      '  PORTER_AGENT_PROMPT_TIMEOUT_MS=<ms>    Agent prompt timeout; default 900000\n' +
-      '  PORTER_AGENT_WORKER_MAX_COUNT=<n>      Max agent worker processes; default 10\n' +
-      '  PORTER_AGENT_WORKER_IDLE_TIMEOUT_MS=<ms>  Idle worker eviction; default 600000\n',
-  );
+  await run(binary(app), argv);
 }

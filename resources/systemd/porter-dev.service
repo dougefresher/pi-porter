@@ -9,7 +9,7 @@ Type=simple
 WorkingDirectory=%h/workspace
 EnvironmentFile=%h/workspace/.env
 # Dev unit: run the locally built binary. PATH is for agent subprocesses (bun, tools), not ExecStart.
-ExecStart=%h/.local/bin/porter --serve
+ExecStart=%h/.local/bin/porter serve
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PORTER_SOCKET=%t/porter-dev/porter.sock
 RuntimeDirectory=porter-dev

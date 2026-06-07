@@ -77,12 +77,11 @@ export class ControlServer {
     try {
       await Bun.file(socketPath).delete();
     } catch (err) {
-      console.warn('[control-server] stale socket cleanup failed', { path: socketPath, err });
+      console.debug('[control-server] stale socket cleanup failed', { path: socketPath, err });
     }
 
     this.socketPath = socketPath;
     console.log('[control-server] binding on unix socket', { path: socketPath });
-
     this.server = Bun.serve({
       unix: socketPath,
       routes: {

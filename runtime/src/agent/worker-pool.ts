@@ -1,9 +1,9 @@
 /**
  * LRU pool of long-lived Pi agent worker processes.
  *
- * Each worker is a Bun child process running `porter --agent-worker`.
+ * Each worker is a Bun child process running `porter agent-worker`.
  * In production this is the compiled binary; in development it's
- * `bun <entrypoint> --agent-worker`.
+ * `bun <entrypoint> agent-worker`.
  *
  * The pool keeps at most `maxWorkers` processes alive, evicting
  * the least recently used on overflow. Idle workers are expired
@@ -20,16 +20,16 @@ import { sessionDirForKey } from './session-paths.js';
  * Build the spawn command for a worker child process.
  *
  * Compiled binary (Bun.main === process.execPath):
- *   ["/usr/bin/porter", "--agent-worker"]
+ *   ["/usr/bin/porter", "agent-worker"]
  *
  * Development (bun run):
- *   ["/usr/bin/bun", "<absolute-path>/runtime/src/index.ts", "--agent-worker"]
+ *   ["/usr/bin/bun", "<absolute-path>/runtime/src/index.ts", "agent-worker"]
  */
 function workerSpawnCommand(): string[] {
   if (Bun.main === process.execPath) {
-    return [process.execPath, '--agent-worker'];
+    return [process.execPath, 'agent-worker'];
   }
-  return [process.execPath, Bun.main, '--agent-worker'];
+  return [process.execPath, Bun.main, 'agent-worker'];
 }
 
 // ---- Types ----

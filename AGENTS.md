@@ -49,7 +49,7 @@ PiAgentRunner.run()
        │
        ├─ getOrSpawn(key)
        │    ├─ cache hit  → reuse hot child
-       │    └─ cache miss → Bun.spawn([execPath, '--agent-worker'], { ipc })
+       │    └─ cache miss → Bun.spawn([execPath, 'agent-worker'], { ipc })
        │                    ├─ parent sends { type: 'init', sessionKey, cwd, sessionDir }
        │                    ├─ child creates Pi session (one-time)
        │                    └─ child sends { type: 'ready' }
@@ -63,7 +63,7 @@ PiAgentRunner.run()
 **Design decisions:**
 
 - **One session per child process.** A child spawns once, creates the session once, and never calls `dispose()`. It lives until the parent SIGTERMs it (LRU eviction or daemon shutdown).
-- **Binary self-spawning.** The compiled porter binary handles all three modes (`porter` = client CLI, `porter --serve` = daemon, `porter --agent-worker` = child worker). The pool spawns `[execPath, '--agent-worker']` so the binary re-executes itself. In development this becomes `[bun, entrypoint, '--agent-worker']`.
+- **Binary self-spawning.** The compiled porter binary handles all modes as subcommands (`porter serve` = daemon, `porter agent-worker` = child worker, `porter task ...` = client CLI). The pool spawns `[execPath, 'agent-worker']` so the binary re-executes itself. In development this becomes `[bun, entrypoint, 'agent-worker']`.
 - **QuickLRU for lifecycle.** The pool uses QuickLRU (`maxSize`, `maxAge`, `onEviction`) to bound concurrent workers and expire idle ones. Eviction sends SIGTERM; a crashed child's `onExit` rejects any in-flight prompt.
 - **Per-key serialization.** Multiple inbound events for the same session key chain on a promise-based lock so a single Pi session never receives concurrent prompts.
 - **Timeout in parent.** The parent times out the prompt (SIGTERM to child if exceeded), not the child. This keeps the child simple and stateless between prompts.
@@ -75,7 +75,7 @@ PiAgentRunner.run()
 | `PORTER_AGENT_WORKER_MAX_COUNT` | `10` | Max concurrent child processes |
 | `PORTER_AGENT_WORKER_IDLE_TIMEOUT_MS` | `600000` | 10 min idle before SIGTERM eviction |
 
-**Systemd integration:** Both service files use `ExecStart=porter --serve` (explicit daemon flag) and `KillMode=mixed`. The daemon's SIGTERM handler calls `pool.shutdown()` to kill all children. Systemd acts as a SIGKILL safety net after `TimeoutStopSec=30`.
+**Systemd integration:** Both service files use `ExecStart=porter serve` and `KillMode=mixed`. The daemon's SIGTERM handler calls `pool.shutdown()` to kill all children. Systemd acts as a SIGKILL safety net after `TimeoutStopSec=30`.
 
 ## PostgreSQL stance
 
@@ -153,6 +153,7 @@ Reference implementation: `runtime/src/channels/matrix/matrix-html.ts`. Bun mark
 ## Core decisions
 
 - Runtime: Bun + TypeScript.
+- CLI parsing: [cmd-ts](https://github.com/Schniz/cmd-ts) — typed, decoder-based, 4 runtime deps. No manual flag-parsing loops.
 - Error-handling policy (strict): never swallow mutating filesystem/database errors.
   - Forbidden pattern: `.catch(() => {})` on writes/deletes/moves/updates.
   - For destructive operations (delete/truncate/archive), always handle errors explicitly: log context + surface failure to caller/user flow.
